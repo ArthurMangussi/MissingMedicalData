@@ -35,7 +35,7 @@ class ModelsImputation:
         
         vae_wl_config = ConfigVAE()
         vae_wl_config.verbose = 1
-        vae_wl_config.epochs = 2
+        vae_wl_config.epochs = 200
         vae_wl_config.filters = [32, 64]
         vae_wl_config.kernels = 3
         vae_wl_config.neurons = [392, 196]
