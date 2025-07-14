@@ -8,15 +8,15 @@ class Utilities:
         Method to save the array as an image.
         """
         save_dir = f"./results/imputed_images/{mechanism}_{missing_rate}"
-        os.makedirs(save_dir)
-        for i, img_array in enumerate(images):
-            # Assume que img_array está em [0, 1]. Se não, normalize:
-            if img_array.max() <= 1.0:
-                img_array = (img_array * 255).astype(np.uint8)
+        os.makedirs(save_dir, exist_ok=True)
+        for count, image in enumerate(images):
+            img = np.squeeze(image)
+            if img.max() <= 1.0:
+                img = (img * 255).astype(np.uint8)
             else:
-                img_array = img_array.astype(np.uint8)
+                img = img.astype(np.uint8)
 
             # Se for 2D (grayscale), converte diretamente
-            img = Image.fromarray(img_array)
+            img_pil = Image.fromarray(img)
 
-            img.save(os.path.join(save_dir, f"IMG_{i:04d}.png"))
+            img_pil.save(os.path.join(save_dir, f"IMG_{count:04d}.png"))
