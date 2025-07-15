@@ -42,6 +42,7 @@ class ModelsImputation:
         vae_wl_config.dropout = [0.2, 0.2]
         vae_wl_config.latent_dimension = 32
         vae_wl_config.batch_size = 64
+        vae_wl_config.learning_rate = 0.001
         vae_wl_config.activation = "relu"
         vae_wl_config.output_activation = "sigmoid"
         vae_wl_config.loss = tf.keras.losses.binary_crossentropy
