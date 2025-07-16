@@ -2,33 +2,43 @@
 Main code for run Experimental Setup for Missing Data
 Imputation into Images (i.e., Image Inpainting)
 """
+import gc
+
 import numpy as np
 import pandas as pd
+import tensorflow as tf
+from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 from sklearn.metrics import mean_squared_error
-from sklearn.model_selection import train_test_split
-from skimage.metrics import structural_similarity, peak_signal_noise_ratio
+from sklearn.model_selection import StratifiedKFold, train_test_split
+
 from codes.data_amputation import ImageDataAmputation
-from utils.MyModels import ModelsImputation
 from utils.MeLogSingle import MeLogger
 from utils.MyDataset import Datasets
+from utils.MyModels import ModelsImputation
 from utils.MyUtils import Utilities
 
 
 def run_experimental_design(missing_rate: float,
                             md_mechanism: str,
-                            images: np.ndarray):
+                            images: np.ndarray,
+                            labels: np.ndarray):
     _logger = MeLogger()
     ut = Utilities()
     results_mse = {}
     results_psnr = {}
     results_ssim = {}
 
-    number_of_experiments = 30
-    for iter in range(number_of_experiments):
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    for fold, (train_val_idx, test_idx) in enumerate(skf.split(images, labels)):
+        print(f"\n[Fold {fold + 1}/5]")
 
-        # Holdout simples e pré-processamento das imagens
-        x_train_val, x_test = train_test_split(images, test_size=0.2)
-        x_train, x_val = train_test_split(x_train_val, test_size=0.2)
+        x_train_val, x_test = images[train_val_idx], images[test_idx]
+        y_train_val, y_test = labels[train_val_idx], labels[test_idx]
+
+        # Divide treino e validação internamente (ex: 20% para validação)
+        x_train, x_val, y_train, y_val = train_test_split(
+            x_train_val, y_train_val, test_size=0.2, random_state=fold
+    )
 
         amputation = ImageDataAmputation(missing_rate=missing_rate)
         x_train, x_train_md, _ = amputation.generate_missing_mask_mcar(x_train)
@@ -67,6 +77,10 @@ def run_experimental_design(missing_rate: float,
         
         _logger.info(f"Iteration = {iter+1}")
 
+        tf.keras.backend.clear_session()
+        del imputer
+        gc.collect()
+
 
     # Resultados - MSE PSNR 
     results = pd.DataFrame({"MSE":results_mse,
@@ -84,4 +98,5 @@ if __name__ == "__main__":
     
     run_experimental_design(missing_rate=MISSING_RATE,
                             md_mechanism=MD_MECHANISM,
-                            images=inbreast_images)
+                            images=inbreast_images,
+                            labels=y)
