@@ -29,8 +29,9 @@ def run_experimental_design(missing_rate: float,
     results_ssim = {}
 
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    
     for fold, (train_val_idx, test_idx) in enumerate(skf.split(images, labels)):
-        print(f"\n[Fold {fold + 1}/5]")
+        _logger.info(f"\n[Fold {fold + 1}/5]")
 
         x_train_val, x_test = images[train_val_idx], images[test_idx]
         y_train_val, y_test = labels[train_val_idx], labels[test_idx]
@@ -89,14 +90,21 @@ def run_experimental_design(missing_rate: float,
     results.to_csv(f"./results/MCAR_{missing_rate}_results.csv", index=False)
 
 if __name__ == "__main__":
-    MISSING_RATE = 0.05
     MD_MECHANISM = "MCAR"
 
     # Carregar as imagens
     data = Datasets('inbreast')
     inbreast_images, y = data.load_data()
     
-    run_experimental_design(missing_rate=MISSING_RATE,
+    run_experimental_design(missing_rate=0.05,
+                            md_mechanism=MD_MECHANISM,
+                            images=inbreast_images,
+                            labels=y)
+    run_experimental_design(missing_rate=0.10,
+                            md_mechanism=MD_MECHANISM,
+                            images=inbreast_images,
+                            labels=y)
+    run_experimental_design(missing_rate=0.20,
                             md_mechanism=MD_MECHANISM,
                             images=inbreast_images,
                             labels=y)
