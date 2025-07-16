@@ -2,6 +2,8 @@
 Main code for run Experimental Setup for Missing Data
 Imputation into Images (i.e., Image Inpainting)
 """
+import sys
+sys.path.append("./")
 import gc
 
 import numpy as np

@@ -11,7 +11,7 @@ class Datasets:
         self.name_dataset = name_dataset
     
     @staticmethod
-    def _load_inbreast_images(size=(256,256)):
+    def _load_inbreast_images():
         """
         Method to load the INBreast dataset.
 
@@ -19,27 +19,28 @@ class Datasets:
             size (tuple): The shape for the redimension
         image
         """
-        data_dir = "D:\@MamoImages\INBreast\AllDICOMs"
+        data_dir = "/home/mult-e/Área de trabalho/@MamoImages/INBreast/AllPNG/"
         images = []
-        filenames = [f for f in os.listdir(data_dir) if f.endswith('.dcm')]
+        filenames = [f for f in os.listdir(data_dir) if f.endswith('.png')]
         edited_filenames = [int(f.split("_")[0]) for f in filenames]
 
-        for file in filenames:
-            dicom_path = os.path.join(data_dir, file)
-            ds = pydicom.dcmread(dicom_path)
-            img = ds.pixel_array
-            img = cv2.resize(img, size, interpolation=cv2.INTER_AREA)
+        # Percorre todos os arquivos da pasta
+        for nome_arquivo in os.listdir(data_dir):
+            if nome_arquivo.endswith('.png'):
+                caminho_imagem = os.path.join(data_dir, nome_arquivo)
+                
+                imagem = cv2.imread(caminho_imagem, cv2.IMREAD_GRAYSCALE)
 
-            img = img.astype(np.float32)
-            # Normalização simples
-            img = (img - np.min(img)) / (np.max(img) - np.min(img))
-            images.append(img)
-        
+                if imagem is not None:
+                    images.append(imagem)
+                else:
+                    raise ValueError(f"Erro ao ler a imagem: {nome_arquivo}")
+                
         return np.array(images), edited_filenames
     
     @staticmethod
     def _load_inbreast_labels(filenames):
-        label_file = "D:\@MamoImages\INBreast\INbreast.xlsx"
+        label_file = "/home/mult-e/Área de trabalho/@MamoImages/INBreast/INbreast.xlsx"
         df = pd.read_excel(label_file)  # arquivo com mapping de nome -> label
         label_dict = dict(zip(df["File Name"], df["Bi-Rads"]))  # adapte os nomes das colunas
         
