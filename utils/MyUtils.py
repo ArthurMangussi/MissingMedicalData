@@ -3,11 +3,11 @@ import os
 import numpy as np
 class Utilities:
     @staticmethod
-    def save_image(mechanism:str, missing_rate:str, images:np.ndarray):
+    def save_image(mechanism:str, missing_rate:str, images:np.ndarray, fold:int):
         """
         Method to save the array as an image.
         """
-        save_dir = f"./results/imputed_images/{mechanism}_{missing_rate}"
+        save_dir = f"./results/imputed_images/fold{fold}_{mechanism}_{missing_rate}"
         os.makedirs(save_dir, exist_ok=True)
         for count, image in enumerate(images):
             img = np.squeeze(image)

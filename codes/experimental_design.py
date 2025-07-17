@@ -61,7 +61,8 @@ def run_experimental_design(missing_rate: float,
         ## Save the reconstructed image
         ut.save_image(mechanism=md_mechanism,
                     missing_rate=missing_rate,
-                    images=x_test_imputed)
+                    images=x_test_imputed,
+                    fold=fold)
 
         ## Measure the imputation performance
         missing_mask_test_flat = missing_mask_test.astype(bool).flatten()
@@ -74,11 +75,9 @@ def run_experimental_design(missing_rate: float,
                                     x_test.flatten()[missing_mask_test_flat],
                                     data_range=1.0)
         
-        results_mse[f"iter{iter+1}"] = round(mse, 4)
-        results_psnr[f"iter{iter+1}"] = round(psnr, 4)
-        results_ssim[f"iter{iter+1}"] = round(ssim, 4)
-        
-        _logger.info(f"Iteration = {iter+1}")
+        results_mse[f"fold{fold}"] = round(mse, 4)
+        results_psnr[f"fold{fold}"] = round(psnr, 4)
+        results_ssim[f"fold{fold}"] = round(ssim, 4)
 
         tf.keras.backend.clear_session()
         del imputer
@@ -89,7 +88,7 @@ def run_experimental_design(missing_rate: float,
     results = pd.DataFrame({"MSE":results_mse,
                         "PSNR":results_psnr,
                         "SSIM": results_ssim})
-    results.to_csv(f"./results/MCAR_{missing_rate}_results.csv", index=False)
+    results.to_csv(f"./results/{md_mechanism}_{missing_rate}_results.csv")
 
 if __name__ == "__main__":
     MD_MECHANISM = "MCAR"
@@ -98,14 +97,6 @@ if __name__ == "__main__":
     data = Datasets('inbreast')
     inbreast_images, y = data.load_data()
     
-    run_experimental_design(missing_rate=0.05,
-                            md_mechanism=MD_MECHANISM,
-                            images=inbreast_images,
-                            labels=y)
-    run_experimental_design(missing_rate=0.10,
-                            md_mechanism=MD_MECHANISM,
-                            images=inbreast_images,
-                            labels=y)
     run_experimental_design(missing_rate=0.20,
                             md_mechanism=MD_MECHANISM,
                             images=inbreast_images,
