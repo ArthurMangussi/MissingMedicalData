@@ -42,7 +42,7 @@ class Datasets:
     def _load_inbreast_labels(filenames):
         label_file = "/home/mult-e/Área de trabalho/@MamoImages/INBreast/INbreast.xlsx"
         df = pd.read_excel(label_file)  # arquivo com mapping de nome -> label
-        label_dict = dict(zip(df["File Name"], df["Bi-Rads"]))  # adapte os nomes das colunas
+        label_dict = dict(zip(df["File Name"], df["Target"]))  # adapte os nomes das colunas
         
         labels = [label_dict.get(name, -1) for name in filenames]
         return np.array(labels)
