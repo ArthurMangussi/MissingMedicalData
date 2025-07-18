@@ -19,8 +19,10 @@ from utils.MyDataset import Datasets
 from utils.MyModels import ModelsImputation
 from utils.MyUtils import Utilities
 
+import multiprocessing
 
-def run_experimental_design(missing_rate: float,
+def run_experimental_design(model_impt:str,
+                            missing_rate: float,
                             md_mechanism: str,
                             images: np.ndarray,
                             labels: np.ndarray):
@@ -44,12 +46,12 @@ def run_experimental_design(missing_rate: float,
     )
 
         amputation = ImageDataAmputation(missing_rate=missing_rate)
-        x_train, x_train_md, _ = amputation.generate_missing_mask_mcar(x_train)
-        x_val, x_val_md, _ = amputation.generate_missing_mask_mcar(x_val)
-        x_test, x_test_md, missing_mask_test = amputation.generate_missing_mask_mcar(x_test)
+        x_train, x_train_md, _ = amputation.generate_missing_mask_mnar(x_train)
+        x_val, x_val_md, _ = amputation.generate_missing_mask_mnar(x_val)
+        x_test, x_test_md, missing_mask_test = amputation.generate_missing_mask_mnar(x_test)
 
         model = ModelsImputation()
-        imputer = model.choose_model("vaewl", 
+        imputer = model.choose_model(model=model_impt, 
                                     x_train=x_train,
                                     x_train_md=x_train_md,
                                     x_val_md=x_val_md,
@@ -62,7 +64,8 @@ def run_experimental_design(missing_rate: float,
         ut.save_image(mechanism=md_mechanism,
                     missing_rate=missing_rate,
                     images=x_test_imputed,
-                    fold=fold)
+                    fold=fold,
+                    model_impt=model_impt)
 
         ## Measure the imputation performance
         missing_mask_test_flat = missing_mask_test.astype(bool).flatten()
@@ -70,7 +73,8 @@ def run_experimental_design(missing_rate: float,
         mse = mean_squared_error(x_test_imputed.flatten()[missing_mask_test_flat],
                                     x_test.flatten()[missing_mask_test_flat])
         psnr = peak_signal_noise_ratio(x_test_imputed.flatten()[missing_mask_test_flat],
-                                    x_test.flatten()[missing_mask_test_flat])
+                                    x_test.flatten()[missing_mask_test_flat],
+                                    data_range=1.0)
         ssim = structural_similarity(x_test_imputed.flatten()[missing_mask_test_flat],
                                     x_test.flatten()[missing_mask_test_flat],
                                     data_range=1.0)
@@ -88,16 +92,22 @@ def run_experimental_design(missing_rate: float,
     results = pd.DataFrame({"MSE":results_mse,
                         "PSNR":results_psnr,
                         "SSIM": results_ssim})
-    results.to_csv(f"./results/{md_mechanism}_{missing_rate}_results.csv")
+    results.to_csv(f"./results/{model_impt}/{md_mechanism}_{missing_rate}_results.csv")
 
 if __name__ == "__main__":
-    MD_MECHANISM = "MCAR"
+    MD_MECHANISM = "MNAR"
 
     # Carregar as imagens
     data = Datasets('inbreast')
     inbreast_images, y = data.load_data()
     
-    run_experimental_design(missing_rate=0.20,
-                            md_mechanism=MD_MECHANISM,
-                            images=inbreast_images,
-                            labels=y)
+    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
+
+        args_list = [
+                     
+                     ("knn",0.05,MD_MECHANISM,inbreast_images,y),
+                     ("knn",0.10,MD_MECHANISM,inbreast_images,y),
+                     ("knn",0.20,MD_MECHANISM,inbreast_images,y),
+                     ]
+        
+        pool.starmap(run_experimental_design,args_list)

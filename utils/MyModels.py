@@ -18,6 +18,8 @@ from algorithms.vae import ConfigVAE
 from algorithms.vaewl import VAEWL
 from utils.MeLogSingle import MeLogger
 
+from algorithms.wrappers import KNNWrapper, MICEWrapper, MCWrapper
+
 # Ignorar todos os avisos
 warnings.filterwarnings("ignore")
 
@@ -59,9 +61,21 @@ class ModelsImputation:
         return vaewl
     
     # ------------------------------------------------------------------------
+    def model_knn():
+        knn = KNNWrapper(n_neighbors=3)
+        return knn
+    # ------------------------------------------------------------------------
+    def model_mice():
+        mice = MICEWrapper(max_iter=10)
+        return mice
+    # ------------------------------------------------------------------------
+    def model_mc():
+        mc = MCWrapper()
+        return mc
+    # ------------------------------------------------------------------------
     def choose_model(self,
                      model: str, 
-                     x_train: np.ndarray,
+                     x_train: np.ndarray = None,
                      x_train_md: np.ndarray = None,
                        x_val_md: np.ndarray = None, 
                        x_val: np.ndarray = None):
@@ -73,3 +87,14 @@ class ModelsImputation:
                                                     x_train_md=x_train_md,
                                                     x_val_md=x_val_md,
                                                     x_val=x_val)
+            case "knn":
+                self._logger.info("[KNN] Training...")
+                return ModelsImputation.model_knn()
+            
+            case "mice":
+                self._logger.info("[MICE] Training...")
+                return ModelsImputation.model_mice()
+            
+            case "mc":
+                self._logger.info("[MC] Training...")
+                return  ModelsImputation.model_mc()
