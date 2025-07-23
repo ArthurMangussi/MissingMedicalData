@@ -46,9 +46,9 @@ def run_experimental_design(model_impt:str,
     )
 
         amputation = ImageDataAmputation(missing_rate=missing_rate)
-        x_train, x_train_md, _ = amputation.generate_missing_mask_mnar(x_train)
-        x_val, x_val_md, _ = amputation.generate_missing_mask_mnar(x_val)
-        x_test, x_test_md, missing_mask_test = amputation.generate_missing_mask_mnar(x_test)
+        x_train, x_train_md, _ = amputation.generate_missing_mask_mcar(x_train)
+        x_val, x_val_md, _ = amputation.generate_missing_mask_mcar(x_val)
+        x_test, x_test_md, missing_mask_test = amputation.generate_missing_mask_mcar(x_test)
 
         model = ModelsImputation()
         imputer = model.choose_model(model=model_impt, 
@@ -65,7 +65,8 @@ def run_experimental_design(model_impt:str,
                     missing_rate=missing_rate,
                     images=x_test_imputed,
                     fold=fold,
-                    model_impt=model_impt)
+                    model_impt=model_impt,
+                    labels=y_test)
 
         ## Measure the imputation performance
         missing_mask_test_flat = missing_mask_test.astype(bool).flatten()
@@ -95,19 +96,23 @@ def run_experimental_design(model_impt:str,
     results.to_csv(f"./results/{model_impt}/{md_mechanism}_{missing_rate}_results.csv")
 
 if __name__ == "__main__":
-    MD_MECHANISM = "MNAR"
+    MD_MECHANISM = "MCAR"
 
     # Carregar as imagens
     data = Datasets('inbreast')
     inbreast_images, y = data.load_data()
     
-    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
+    run_experimental_design("vaewl",0.05,MD_MECHANISM,inbreast_images,y)
+    run_experimental_design("vaewl",0.10,MD_MECHANISM,inbreast_images,y)
+    run_experimental_design("vaewl",0.20,MD_MECHANISM,inbreast_images,y)
 
-        args_list = [
+    #with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
+
+    #    args_list = [
                      
-                     ("knn",0.05,MD_MECHANISM,inbreast_images,y),
-                     ("knn",0.10,MD_MECHANISM,inbreast_images,y),
-                     ("knn",0.20,MD_MECHANISM,inbreast_images,y),
-                     ]
+    #                 ("mc",0.05,MD_MECHANISM,inbreast_images,y),
+    #                 ("mc",0.10,MD_MECHANISM,inbreast_images,y),
+    #                 ("mc",0.20,MD_MECHANISM,inbreast_images,y),
+    #                 ]
         
-        pool.starmap(run_experimental_design,args_list)
+    #    pool.starmap(run_experimental_design,args_list)

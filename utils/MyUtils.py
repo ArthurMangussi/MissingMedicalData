@@ -1,9 +1,16 @@
 from PIL import Image
 import os 
 import numpy as np
+import pandas as pd
+
 class Utilities:
     @staticmethod
-    def save_image(mechanism:str, missing_rate:str, images:np.ndarray, fold:int, model_impt:str):
+    def save_image(mechanism:str, 
+                   missing_rate:str, 
+                   images:np.ndarray, 
+                   fold:int, 
+                   model_impt:str,
+                   labels:np.ndarray):
         """
         Method to save the array as an image.
         """
@@ -20,3 +27,6 @@ class Utilities:
             img_pil = Image.fromarray(img)
 
             img_pil.save(os.path.join(save_dir, f"IMG_{count:04d}.png"))
+        
+        labels_df = pd.Series(labels)
+        labels_df.to_csv(os.path.join(save_dir, "classes.csv"))

@@ -171,7 +171,7 @@ class CNN:
         self.model.fit(
                 train_generator,
                 steps_per_epoch=len(y_train) // self.batch_size,
-                epochs=500,
+                epochs=self.epochs,
                 validation_data=validation_generator,
                 callbacks=[earlystopping])
         
@@ -179,3 +179,5 @@ class CNN:
                 x_test):    
         predict = self.model.predict(x_test,
                                      batch_size =1)
+        
+        return predict
