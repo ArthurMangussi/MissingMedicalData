@@ -6,7 +6,6 @@
 ##########################################################################################
 
 
-
 from PIL import Image
 import pydicom
 import glob
@@ -14,7 +13,7 @@ import numpy as np
 import cv2 as cv2
 
 # Setting the dataset directory
-thisdir = "/home/mult-e/Área de trabalho/@MamoImages/INBreast/AllDICOMs"
+thisdir = "/home/gpu-10-2025/Área de trabalho/Datasets/INBreast/DICOM"
 
 images = []; labels = []
 tt = 0
@@ -49,4 +48,4 @@ for img_path in sorted(glob.glob(thisdir + "/*.dcm")):
     if(tt%100 == 0):
         print('Saving image: {} of 410'.format(tt))
     img = Image.fromarray(np.uint8(image*255))
-    img.save('/home/mult-e/Área de trabalho/@MamoImages/INBreast/AllPNG/' + dir3 + '.png')
+    img.save('/home/gpu-10-2025/Área de trabalho/Datasets/INBreast/PNG/' + dir3 + '.png')

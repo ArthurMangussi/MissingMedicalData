@@ -27,7 +27,7 @@ import tensorflow as tf
 
 from keras.models import Sequential
 from keras.layers import Conv2D, Dense, Flatten, Dropout, MaxPooling2D
-from keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.callbacks import EarlyStopping
 
 

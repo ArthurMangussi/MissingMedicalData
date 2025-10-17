@@ -3,7 +3,7 @@
 import configparser
 import logging
 from datetime import datetime
-
+import os
 
 class MeLogger(logging.Logger):
     """Extensão da Classe Logger, customizada para a aplicação"""
@@ -66,6 +66,7 @@ class MeLogger(logging.Logger):
         config = configparser.ConfigParser()
         config.read("./utils/app.ini")
 
+        os.makedirs('./logs', exist_ok=True)
         path_log = config.get("log", "path_log")
         natureza = config.get("log", "natureza")
 

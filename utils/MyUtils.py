@@ -10,12 +10,16 @@ class Utilities:
                    images:np.ndarray, 
                    fold:int, 
                    model_impt:str,
-                   labels:np.ndarray):
+                   labels_names:dict,
+                   image_ids:list):
         """
         Method to save the array as an image.
         """
         save_dir = f"./results/{model_impt}/imputed_images/fold{fold}_{mechanism}_{missing_rate}"
         os.makedirs(save_dir, exist_ok=True)
+        
+        labels = np.array([{str(i):labels_names[i]} for i in image_ids])
+        
         for count, image in enumerate(images):
             img = np.squeeze(image)
             if img.max() <= 1.0:
@@ -28,5 +32,8 @@ class Utilities:
 
             img_pil.save(os.path.join(save_dir, f"IMG_{count:04d}.png"))
         
-        labels_df = pd.Series(labels)
+        labels_df = pd.DataFrame(
+            [(k, v) for d in labels for k, v in d.items()],
+            columns=['Image', 'Target']
+        )
         labels_df.to_csv(os.path.join(save_dir, "classes.csv"))

@@ -3,6 +3,7 @@ from tensorflow.keras import Model, layers, backend as K
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.callbacks import ReduceLROnPlateau, EarlyStopping
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.losses import MeanSquaredError
 from dataclasses import dataclass, field
 from typing import Any, List, Tuple
 import numpy as np
@@ -28,7 +29,7 @@ class ConfigVAE:
             divergence component of the loss function.
         - The only mandatory attribute is the input shape.
     """
-    loss: Any = tf.keras.losses.mean_squared_error
+    loss: Any = MeanSquaredError()
     metrics: List = field(default_factory=lambda: [])
     epochs: int = 200
     batch_size: int = 32

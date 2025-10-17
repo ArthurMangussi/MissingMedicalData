@@ -25,12 +25,16 @@ def run_experimental_design(model_impt:str,
                             missing_rate: float,
                             md_mechanism: str,
                             images: np.ndarray,
-                            labels: np.ndarray):
+                            labels_names:dict, 
+                            image_ids:list):
     _logger = MeLogger()
     ut = Utilities()
     results_mse = {}
     results_psnr = {}
     results_ssim = {}
+
+    image_ids = np.array(image_ids)
+    labels = np.array([labels_names[i] for i in image_ids])
 
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
     
@@ -40,6 +44,7 @@ def run_experimental_design(model_impt:str,
         x_train_val, x_test = images[train_val_idx], images[test_idx]
         y_train_val, y_test = labels[train_val_idx], labels[test_idx]
 
+        img_test_idx = image_ids[test_idx]
         # Divide treino e validação internamente (ex: 20% para validação)
         x_train, x_val, y_train, y_val = train_test_split(
             x_train_val, y_train_val, test_size=0.2, random_state=fold
@@ -66,7 +71,8 @@ def run_experimental_design(model_impt:str,
                     images=x_test_imputed,
                     fold=fold,
                     model_impt=model_impt,
-                    labels=y_test)
+                    labels_names= labels_names, 
+                    image_ids = img_test_idx)
 
         ## Measure the imputation performance
         missing_mask_test_flat = missing_mask_test.astype(bool).flatten()
@@ -100,11 +106,11 @@ if __name__ == "__main__":
 
     # Carregar as imagens
     data = Datasets('inbreast')
-    inbreast_images, y = data.load_data()
-    
-    run_experimental_design("vaewl",0.05,MD_MECHANISM,inbreast_images,y)
-    run_experimental_design("vaewl",0.10,MD_MECHANISM,inbreast_images,y)
-    run_experimental_design("vaewl",0.20,MD_MECHANISM,inbreast_images,y)
+    inbreast_images, y_mapped, image_ids = data.load_data()
+
+    run_experimental_design("knn",0.05,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
+    run_experimental_design("knn",0.10,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
+    run_experimental_design("knn",0.20,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
 
     #with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
 

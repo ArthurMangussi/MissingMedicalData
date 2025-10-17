@@ -1,7 +1,11 @@
 numpy==1.26.4
 pandas==2.2.2
-scikit-image==0.19.3
+scikit-image
 tqdm==4.66.2
 scikit-learn==1.4.2
-PIL
+Pillow
 pydicom
+opencv-python
+tensorflow[and-cuda]
+fancyimpute
+openpyxl

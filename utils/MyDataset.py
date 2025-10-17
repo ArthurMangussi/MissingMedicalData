@@ -19,24 +19,27 @@ class Datasets:
             size (tuple): The shape for the redimension
         image
         """
-        data_dir = "/home/mult-e/Área de trabalho/@MamoImages/INBreast/AllPNG/"
         images = []
-        filenames = [f for f in os.listdir(data_dir) if f.endswith('.png')]
-        edited_filenames = [int(f.split("_")[0]) for f in filenames]
+        filenames = []
 
-        # Percorre todos os arquivos da pasta
-        for nome_arquivo in os.listdir(data_dir):
-            if nome_arquivo.endswith('.png'):
-                caminho_imagem = os.path.join(data_dir, nome_arquivo)
-                
-                imagem = cv2.imread(caminho_imagem, cv2.IMREAD_GRAYSCALE)
+        data_dir = "/home/gpu-10-2025/Área de trabalho/Datasets/INBreast/PNG/"
+        # Ordenar os arquivos para manter consistência
+        files = sorted([f for f in os.listdir(data_dir) if f.endswith('.png')])
 
-                if imagem is not None:
-                    images.append(imagem)
-                else:
-                    raise ValueError(f"Erro ao ler a imagem: {nome_arquivo}")
-                
-        return np.array(images), edited_filenames
+        for f in files:
+            caminho_imagem = os.path.join(data_dir, f)
+            imagem = cv2.imread(caminho_imagem, cv2.IMREAD_GRAYSCALE)
+            if imagem is None:
+                raise ValueError(f"Erro ao ler a imagem: {f}")
+            
+            # Redimensiona
+            imagem = cv2.resize(imagem, (224,224))
+            images.append(imagem)
+            complete_name = f.split("_")
+            filenames.append(complete_name[0] + "_" + complete_name[3] + "_" + complete_name[4] + "_" + complete_name[5][:-4])  # mantém o nome completo como string
+
+        
+        return np.array(images), [i.replace("ML", "MLO") for i in filenames]
     
     @staticmethod
     def _load_inbreast_images_imputed(md_mechanism:str,
@@ -87,19 +90,23 @@ class Datasets:
         return np.array(images), np.array(labels)
     
     @staticmethod
-    def _load_inbreast_labels(filenames):
-        label_file = "/home/mult-e/Área de trabalho/@MamoImages/INBreast/INbreast.xlsx"
+    def _load_inbreast_labels():
+        label_file = "/home/gpu-10-2025/Área de trabalho/Datasets/INBreast/INbreast.xlsx"
         df = pd.read_excel(label_file)  # arquivo com mapping de nome -> label
-        label_dict = dict(zip(df["File Name"], df["Target"]))  # adapte os nomes das colunas
-        
-        labels = [label_dict.get(name, -1) for name in filenames]
-        return np.array(labels)
+        # Garantindo que todos os valores sejam strings
+        keys = df["File Name"].astype(str) + "_" + df['Laterality'].astype(str) + "_" + df['View'].astype(str) + "_" + 'ANON'
+
+        # Criando o dicionário
+        my_dict = dict(zip(keys, df["Target"]))
+
+        return my_dict
 
     def load_data(self):
         match self.name_dataset:
             case "inbreast":
-                images, filenames = self._load_inbreast_images()
-                y = self._load_inbreast_labels(filenames)
-                return images, y    
+                images, image_ids = self._load_inbreast_images()
+                y_dict = self._load_inbreast_labels()
+                
+                return images, y_dict, image_ids
     
     
