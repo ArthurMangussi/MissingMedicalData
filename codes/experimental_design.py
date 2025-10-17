@@ -51,7 +51,7 @@ def run_experimental_design(model_impt:str,
     )
 
         amputation = ImageDataAmputation(missing_rate=missing_rate)
-        x_train, x_train_md, _ = amputation.generate_missing_mask_mcar(x_train)
+        x_train, x_train_md, missing_mask_train = amputation.generate_missing_mask_mcar(x_train)
         x_val, x_val_md, _ = amputation.generate_missing_mask_mcar(x_val)
         x_test, x_test_md, missing_mask_test = amputation.generate_missing_mask_mcar(x_test)
 
@@ -60,7 +60,8 @@ def run_experimental_design(model_impt:str,
                                     x_train=x_train,
                                     x_train_md=x_train_md,
                                     x_val_md=x_val_md,
-                                    x_val=x_val
+                                    x_val=x_val,
+                                    mask_train=missing_mask_train
                                     )
 
         x_test_imputed = imputer.transform(x_test_md)
@@ -108,7 +109,7 @@ if __name__ == "__main__":
     data = Datasets('inbreast')
     inbreast_images, y_mapped, image_ids = data.load_data()
 
-    run_experimental_design("knn",0.05,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
+    run_experimental_design("cvae",0.05,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
     run_experimental_design("knn",0.10,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
     run_experimental_design("knn",0.20,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
 

@@ -18,7 +18,7 @@ from algorithms.vae import ConfigVAE
 from algorithms.vaewl import VAEWL
 from utils.MeLogSingle import MeLogger
 
-from algorithms.wrappers import KNNWrapper, MICEWrapper, MCWrapper
+from algorithms.wrappers import KNNWrapper, MICEWrapper, MCWrapper, VAEWrapper
 
 
 import numpy as np
@@ -87,13 +87,26 @@ class ModelsImputation:
     def model_mc():
         mc = MCWrapper()
         return mc
+    
+    # ------------------------------------------------------------------------
+    def model_cvae(x_train:np.ndarray,
+                    x_train_md:np.ndarray,
+                    mask_train: np.ndarray
+                    ):
+        cvae = VAEWrapper(images_train_val=x_train,
+                          images_with_mv_train_val=x_train_md,
+                          masks_train_val=mask_train)
+        cvae.train()
+        return cvae
+    
     # ------------------------------------------------------------------------
     def choose_model(self,
                      model: str, 
                      x_train: np.ndarray = None,
                      x_train_md: np.ndarray = None,
                        x_val_md: np.ndarray = None, 
-                       x_val: np.ndarray = None):
+                       x_val: np.ndarray = None,
+                       mask_train: np.ndarray = None):
         match model:
 
             case "vaewl":
@@ -113,6 +126,12 @@ class ModelsImputation:
             case "mc":
                 self._logger.info("[MC] Training...")
                 return  ModelsImputation.model_mc()
+            
+            case "cvae":
+                self._logger.info("[CVAE] Training...")
+                return  ModelsImputation.model_cvae(x_train=x_train,
+                                                    x_train_md=x_train_md,
+                                                    mask_train=mask_train)
             
 class CNN:
     def __init__(self, 
