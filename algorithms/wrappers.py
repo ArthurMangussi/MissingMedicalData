@@ -28,7 +28,8 @@ class MICEWrapper:
         self.mice_impute = IterativeImputer(max_iter=max_iter,
                                             random_state=42,
                                             verbose=1,
-                                            skip_complete=True
+                                            skip_complete=True,
+                                            initial_strategy='median'
                                             )
         train_images = x_train.reshape((x_train.shape[0], -1))
         self.mice_impute.fit(X=train_images)
