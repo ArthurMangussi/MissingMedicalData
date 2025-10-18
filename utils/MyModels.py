@@ -80,8 +80,10 @@ class ModelsImputation:
         knn = KNNWrapper(n_neighbors=3)
         return knn
     # ------------------------------------------------------------------------
-    def model_mice():
-        mice = MICEWrapper(max_iter=10)
+    def model_mice(x_train:np.ndarray):
+
+        mice = MICEWrapper(max_iter=100,
+                           x_train=x_train)
         return mice
     # ------------------------------------------------------------------------
     def model_mc():
@@ -121,11 +123,11 @@ class ModelsImputation:
             
             case "mice":
                 self._logger.info("[MICE] Training...")
-                return ModelsImputation.model_mice()
+                return ModelsImputation.model_mice(x_train=x_train)
             
             case "mc":
                 self._logger.info("[MC] Training...")
-                return  ModelsImputation.model_mc()
+                return  ModelsImputation.model_mc(x_train=x_train)
             
             case "cvae":
                 self._logger.info("[CVAE] Training...")

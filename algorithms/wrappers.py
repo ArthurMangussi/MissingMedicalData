@@ -22,20 +22,25 @@ class MICEWrapper:
     
     # TODO: Must be improved to avoid unused parameters... Maybe use tuples?
     def __init__(self, 
-                 max_iter:int):
+                 max_iter:int,
+                 x_train:np.ndarray):
         
         self.mice_impute = IterativeImputer(max_iter=max_iter,
-                                            random_state=42)
+                                            random_state=42,
+                                            verbose=1,
+                                            skip_complete=True
+                                            )
+        train_images = x_train.reshape((x_train.shape[0], -1))
+        self.mice_impute.fit(X=train_images)
         
     def transform(self, images_with_mv_test):
+        
         #Impute the data in each image
-        images = []
-        for k in range(images_with_mv_test.shape[0]):
-            test_image = np.reshape(images_with_mv_test[k],(images_with_mv_test.shape[1],images_with_mv_test.shape[2]))
-            imputed_image = self.mice_impute.fit_transform(test_image)
-            images.append(imputed_image)
-            
-        return np.array(images)
+        test_images = images_with_mv_test.reshape((images_with_mv_test.shape[0], -1))
+        imputed_image = self.mice_impute.transform(test_images)
+        imputed_image = imputed_image.reshape(images_with_mv_test.shape)
+
+        return np.array(imputed_image)
     
 class MCWrapper:
     

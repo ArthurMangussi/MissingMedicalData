@@ -108,18 +108,7 @@ if __name__ == "__main__":
     # Carregar as imagens
     data = Datasets('inbreast')
     inbreast_images, y_mapped, image_ids = data.load_data()
-
-    run_experimental_design("cvae",0.05,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
-    run_experimental_design("knn",0.10,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
-    run_experimental_design("knn",0.20,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
-
-    #with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
-
-    #    args_list = [
-                     
-    #                 ("mc",0.05,MD_MECHANISM,inbreast_images,y),
-    #                 ("mc",0.10,MD_MECHANISM,inbreast_images,y),
-    #                 ("mc",0.20,MD_MECHANISM,inbreast_images,y),
-    #                 ]
-        
-    #    pool.starmap(run_experimental_design,args_list)
+    
+    run_experimental_design("mice",0.05,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
+    run_experimental_design("mice",0.10,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
+    run_experimental_design("mice",0.20,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
