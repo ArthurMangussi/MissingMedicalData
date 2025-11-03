@@ -9,3 +9,6 @@ opencv-python
 tensorflow[and-cuda]
 fancyimpute
 openpyxl
+vit_pytorch
+torchvision
+torch
