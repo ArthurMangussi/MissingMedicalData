@@ -30,12 +30,12 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 def train_model(model, train_loader, criterion, optimizer, num_epochs=10):
     """Ajustada para receber o DataLoader diretamente."""
     for epoch in range(num_epochs):
+        print(f"Epoch {epoch+1}/{num_epochs}")
         # Treinamento
         model.train()
         running_loss = 0.0
         running_corrects = 0
 
-        # O dataloader é passado diretamente, não como dataloaders["train"]
         for inputs, labels in train_loader:
             inputs = inputs.to(device)
             labels = labels.to(device)
@@ -86,7 +86,10 @@ def evaluate_model(model, test_loader, device):
 
 # Baseline Original Images
 data = Datasets("inbreast")
-inbreast_images, y = data.load_data()
+inbreast_images, labels_names, img_ids = data.load_data()
+
+image_ids = np.array(img_ids)
+labels = np.array([labels_names[i] for i in image_ids])
 
 _logger = MeLogger()
 ut = Utilities()
@@ -95,11 +98,13 @@ results_f1 = {}
 
 skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
-for fold, (train_val_idx, test_idx) in enumerate(skf.split(inbreast_images, y)):
+model_vgg = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_V1)
+
+for fold, (train_val_idx, test_idx) in enumerate(skf.split(inbreast_images, labels)):
     _logger.info(f"\n[Fold {fold + 1}/5]")
 
     x_train_val, x_test = inbreast_images[train_val_idx], inbreast_images[test_idx]
-    y_train_val, y_test = y[train_val_idx], y[test_idx]
+    y_train_val, y_test = labels[train_val_idx], labels[test_idx]
 
     # Divide treino e validação internamente (ex: 20% para validação)
     x_train, x_val, y_train, y_val = train_test_split(
@@ -107,7 +112,7 @@ for fold, (train_val_idx, test_idx) in enumerate(skf.split(inbreast_images, y)):
     )
 
     # Treinar a vgg16
-    model_vgg = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_V1)
+    
     # 2. Opcional, mas recomendado: Congela os parâmetros do extrator de features
     #    (as camadas convolucionais) para que apenas as camadas de classificação sejam treinadas
     for param in model_vgg.parameters():
@@ -157,29 +162,20 @@ for fold, (train_val_idx, test_idx) in enumerate(skf.split(inbreast_images, y)):
 
     train_model(
         model=model_vgg,
-        dataloaders=train_loader,
+        train_loader=train_loader,
         criterion=criterion,
         optimizer=optimizer,
-        num_epochs=200,
+        num_epochs=30,
     )
     # Predição
-    y_test_real, y_probs = evaluate_model(model_vgg, test_loader, device)
+    y_pred, y_probs = evaluate_model(model_vgg, test_loader, device)
 
-    roc_auc = roc_auc_score(y_true=y_test_real, y_score=y_probs)
+    roc_auc = roc_auc_score(y_true=y_pred, y_score=y_probs)
     _logger.info(f"ROC AUC: {roc_auc:.4f}")
 
-    # 2. Determinar o melhor Threshold (para F1 e ACC)
-    fpr, tpr, thresholds = roc_curve(y_test_real, y_probs)
-    youden_index = tpr - fpr
-    best_threshold = thresholds[np.argmax(youden_index)]
-    _logger.info(f"Melhor Threshold (Youden's J): {best_threshold:.4f}")
-
-    # 3. Predição Binária (usando o melhor threshold)
-    y_pred_binary = (y_probs > best_threshold).astype(int)
-
     # 4. Salva métricas
-    acc = accuracy_score(y_true=y_test_real, y_pred=y_pred_binary)
-    f1 = f1_score(y_true=y_test_real, y_pred=y_pred_binary)
+    acc = accuracy_score(y_true=y_pred, y_pred=y_test)
+    f1 = f1_score(y_true=y_pred, y_pred=y_test)
 
     results_accuracy[f"fold{fold}"] = round(acc, 4)
     results_f1[f"fold{fold}"] = round(f1, 4)
