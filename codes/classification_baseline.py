@@ -25,26 +25,50 @@ NUM_CLASSES = 2
 BATCH_SIZE = 32
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+class EarlyStopping:
+    def __init__(self, patience=5, min_delta=0.0, restore_best_weights=True):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.restore_best_weights = restore_best_weights
+        self.best_loss = np.inf
+        self.counter = 0
+        self.best_model_state = None
+        self.should_stop = False
+
+    def __call__(self, val_loss, model):
+        if val_loss < self.best_loss - self.min_delta:
+            self.best_loss = val_loss
+            self.counter = 0
+            if self.restore_best_weights:
+                self.best_model_state = {
+                    k: v.cpu().clone() for k, v in model.state_dict().items()
+                }
+        else:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.should_stop = True
+                if self.restore_best_weights and self.best_model_state is not None:
+                    model.load_state_dict(self.best_model_state)
 
 # --- FUNÇÃO DE TREINAMENTO AJUSTADA ---
-def train_model(model, train_loader, criterion, optimizer, num_epochs=10):
+def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs=10):
     """Ajustada para receber o DataLoader diretamente."""
+    early_stopping = EarlyStopping(patience=10, min_delta=1e-4)
+
     for epoch in range(num_epochs):
-        print(f"Epoch {epoch+1}/{num_epochs}")
-        # Treinamento
+        print(f"\nEpoch {epoch+1}/{num_epochs}")
         model.train()
         running_loss = 0.0
         running_corrects = 0
 
+        # Treinamento
         for inputs, labels in train_loader:
             inputs = inputs.to(device)
             labels = labels.to(device)
 
             optimizer.zero_grad()
-
             outputs = model(inputs)
             loss = criterion(outputs, labels)
-
             loss.backward()
             optimizer.step()
 
@@ -54,34 +78,66 @@ def train_model(model, train_loader, criterion, optimizer, num_epochs=10):
 
         epoch_loss = running_loss / len(train_loader.dataset)
         epoch_acc = running_corrects.double() / len(train_loader.dataset)
+
+        # Validação
+        model.eval()
+        val_loss = 0.0
+        val_corrects = 0
+
+        with torch.no_grad():
+            for inputs, labels in val_loader:
+                inputs = inputs.to(device)
+                labels = labels.to(device)
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+
+                val_loss += loss.item() * inputs.size(0)
+                _, preds = torch.max(outputs, 1)
+                val_corrects += torch.sum(preds == labels.data)
+
+        val_loss /= len(val_loader.dataset)
+        val_acc = val_corrects.double() / len(val_loader.dataset)
+
         print(f"Train Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}")
+        print(f"Val   Loss: {val_loss:.4f} Acc: {val_acc:.4f}")
+
+        # Early Stopping Check
+        early_stopping(val_loss, model)
+        if early_stopping.should_stop:
+            print(f"\n Early stopping at epoch {epoch+1}")
+            break
+
+    return model
 
 
 # --- NOVA FUNÇÃO DE AVALIAÇÃO (CRÍTICA) ---
-def evaluate_model(model, test_loader, device):
-    """Coleta todas as predições e labels para avaliação de métricas."""
+def evaluate_model(model, test_loader, device, num_classes=2):
+    """
+    Avalia o modelo no conjunto de teste e retorna:
+        - y_true: labels verdadeiros
+        - y_pred: classes previstas
+        - y_probs: probabilidades da classe positiva (binário)
+    """
     model.eval()
-    all_labels = []
-    all_probs = []
+    y_true, y_pred, y_probs = [], [], []
 
     with torch.no_grad():
         for inputs, labels in test_loader:
             inputs = inputs.to(device)
+            outputs = model(inputs)
+            probs = F.softmax(outputs, dim=1)
 
-            # 1. Forward pass
-            outputs = model(inputs).cpu()
+            _, preds = torch.max(probs, 1)
 
-            # 2. Coleta de probabilidades (necessário para ROC/AUC)
-            # Para 2 classes (Binário), usamos Sigmoid ou Softmax e pegamos a prob da classe positiva (índice 1)
-            if NUM_CLASSES == 2:
-                probs = F.softmax(outputs, dim=1)[:, 1]
-            else:  # Para mais de 2 classes, você precisaria de um tratamento diferente para AUC multi-classe
-                probs = F.softmax(outputs, dim=1)
+            y_true.extend(labels.cpu().numpy())
+            y_pred.extend(preds.cpu().numpy())
 
-            all_labels.extend(labels.cpu().numpy())
-            all_probs.extend(probs.cpu().numpy())
+            if num_classes == 2:
+                y_probs.extend(probs[:, 1].cpu().numpy())
+            else:
+                y_probs.extend(probs.cpu().numpy())
 
-    return np.array(all_labels), np.array(all_probs)
+    return np.array(y_true), np.array(y_pred), np.array(y_probs)
 
 
 # Baseline Original Images
@@ -163,19 +219,20 @@ for fold, (train_val_idx, test_idx) in enumerate(skf.split(inbreast_images, labe
     train_model(
         model=model_vgg,
         train_loader=train_loader,
+        val_loader=val_loader,
         criterion=criterion,
         optimizer=optimizer,
         num_epochs=30,
     )
     # Predição
-    y_pred, y_probs = evaluate_model(model_vgg, test_loader, device)
+    y_true, y_pred, y_probs = evaluate_model(model_vgg, test_loader, device)
 
-    roc_auc = roc_auc_score(y_true=y_pred, y_score=y_probs)
+    roc_auc = roc_auc_score(y_true=y_true, y_score=y_probs)
     _logger.info(f"ROC AUC: {roc_auc:.4f}")
 
     # 4. Salva métricas
-    acc = accuracy_score(y_true=y_pred, y_pred=y_test)
-    f1 = f1_score(y_true=y_pred, y_pred=y_test)
+    acc = accuracy_score(y_true=y_true, y_pred=y_pred)
+    f1 = f1_score(y_true=y_true, y_pred=y_pred)
 
     results_accuracy[f"fold{fold}"] = round(acc, 4)
     results_f1[f"fold{fold}"] = round(f1, 4)
