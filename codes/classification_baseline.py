@@ -125,7 +125,7 @@ def evaluate_model(model, test_loader, device, num_classes=2):
         for inputs, labels in test_loader:
             inputs = inputs.to(device)
             outputs = model(inputs)
-            probs = F.sigmoid(outputs)
+            probs = F.softmax(outputs, dim = 1)
 
             _, preds = torch.max(probs, 1)
 
@@ -224,7 +224,7 @@ for fold, (train_val_idx, test_idx) in enumerate(skf.split(inbreast_images, labe
 
     optimizer = optim.AdamW(
     model_vgg.parameters(), 
-    lr=1e-4, # LR mais alto para aprendizado do zero
+    lr=1e-5, # LR mais alto para aprendizado do zero
     weight_decay=1e-4
 )
 
