@@ -7,8 +7,32 @@ from tensorflow.keras.losses import MeanSquaredError
 from dataclasses import dataclass, field
 from typing import Any, List, Tuple
 import numpy as np
+import keras.ops as ops
 
+class VAELossLayer(layers.Layer):
+    """
+    Camada wrapper para injetar a perda VAE (Reconstrução + KL) no grafo.
+    """
+    def __init__(self, vae_loss_fn, input_shape, **kwargs):
+        super(VAELossLayer, self).__init__(**kwargs)
+        self.vae_loss_fn = vae_loss_fn
+        # Guardamos as dimensões da imagem para usar no cálculo da perda
+        self.width = input_shape[0]
+        self.height = input_shape[1]
 
+    def call(self, inputs):
+        # inputs: [m_input, m_output, masks, z_mean, z_log_var]
+        m_input, m_output, masks, z_mean, z_log_var = inputs
+        
+        # O cálculo da perda agora é executado DENTRO do grafo simbólico
+        vae_loss = self.vae_loss_fn(m_input, m_output, masks, z_mean, z_log_var, self.width, self.height)
+        
+        # Adiciona a perda ao modelo. self.add_loss é a forma simbólica.
+        self.add_loss(vae_loss) 
+        
+        # Retorna a saída principal (m_output) para manter o fluxo do grafo.
+        return m_output
+    
 @dataclass
 class ConfigVAE:
     """
@@ -62,7 +86,7 @@ class Sampling(layers.Layer):
         batch = tf.shape(z_mean)[0]
         dim = tf.shape(z_mean)[1]
         epsilon = tf.keras.backend.random_normal(shape=(batch, dim))
-        epsilon.set_shape(z_mean.shape)
+        
         return z_mean + tf.exp(0.5 * z_log_var) * epsilon
 
 
@@ -98,6 +122,8 @@ class VariationalAutoEncoder:
         x = enc_input = tf.keras.Input(shape=input_shape)
         masks = tf.keras.Input(shape=input_shape)
 
+        x = layers.Concatenate(axis=-1)([enc_input, masks])
+
         for i, f in enumerate(self._config.filters):
             k = self._config.kernels[i] if isinstance(self._config.kernels, list) else self._config.kernels
             x = layers.Conv2D(f, kernel_size=k, padding='same', strides=2, activation=self._config.activation,
@@ -106,7 +132,7 @@ class VariationalAutoEncoder:
 
         shape_before_flat = None
         if len(self._config.filters) > 0:
-            shape_before_flat = list(filter(None, x.get_shape().as_list()))
+            shape_before_flat = list(filter(None, x.shape))
             x = layers.Flatten()(x)
 
         for i, n in enumerate(self._config.neurons):
@@ -148,7 +174,7 @@ class VariationalAutoEncoder:
                                            kernel_regularizer=l2(self._config.l2_lambda),
                                            kernel_initializer=self._config.weights_initializer)(x)
 
-            x = layers.Conv2DTranspose(filters=list(filter(None, enc_input.get_shape().as_list()))[2],
+            x = layers.Conv2DTranspose(filters=list(filter(None, enc_input.shape))[2],
                                        kernel_size=self._config.kernels, strides=1, padding='same',
                                        activation=self._config.output_activation,
                                        kernel_regularizer=l2(self._config.l2_lambda),
@@ -161,9 +187,18 @@ class VariationalAutoEncoder:
 
         m_decoder = Model(dec_input, x, name='decoder')
         enc_output = m_decoder(m_encoder([enc_input, masks])[2])
+        
+        input_size = self._config.input_shape
+        loss_layer = VAELossLayer(
+            vae_loss_fn=self._vae_wl_loss, 
+            input_shape=input_size, 
+            name='vae_loss_injector'
+        )
+        _ = loss_layer([enc_input, enc_output, masks, z_mean, z_log_var])
+
         m_global = Model([enc_input, masks], enc_output, name='vae')
 
-        return m_global, m_encoder, m_decoder, (enc_input, enc_output, masks, z_mean, z_log_var)
+        return m_global, m_encoder, m_decoder
 
     def _vae_wl_loss(self, y_true, y_pred, masks, z_mean, z_log_var, width, height):
         """
@@ -181,13 +216,23 @@ class VariationalAutoEncoder:
         Returns: Loss value.
 
         """
-        bce_loss_mv = self._config.loss(K.flatten(y_true * masks),
-                                        K.flatten(y_pred * masks)) * width * height
-        bce_loss_ov = self._config.loss(K.flatten(y_true * (masks * -1 + 1)),
-                                        K.flatten(y_pred * (masks * -1 + 1))) * width * height
+        flatten_layer = layers.Flatten() 
+        y_true_flat = flatten_layer(y_true * masks)
+        y_pred_flat = flatten_layer(y_pred * masks)
+        
+        bce_loss_mv = self._config.loss(y_true_flat, y_pred_flat) * width * height
+        
+        # Repita para bce_loss_ov
+        y_true_ov_flat = flatten_layer(y_true * (masks * -1 + 1))
+        y_pred_ov_flat = flatten_layer(y_pred * (masks * -1 + 1))
+        
+        bce_loss_ov = self._config.loss(y_true_ov_flat, y_pred_ov_flat) * width * height
+        
         bce_loss = bce_loss_ov + self._config.missing_values_weight * bce_loss_mv
-        kl_loss = - 0.5 * K.sum(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
-        vae_loss = K.mean(bce_loss + self._config.kullback_leibler_weight * kl_loss)
+        
+        # As operações KL usam K.sum, que é mais tolerante e deve estar OK
+        kl_loss = - 0.5 * ops.sum(1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var), axis=-1)
+        vae_loss = ops.mean(bce_loss + self._config.kullback_leibler_weight * kl_loss)
         return vae_loss
 
     def fit(self, x_train, x_mask, y_train, x_val=None, x_val_mask=None, y_val=None):
@@ -203,10 +248,10 @@ class VariationalAutoEncoder:
             y_val (optional): Validation target data.
 
         """
-        self._model, self._encoder, self._decoder, loss_params = self._create_auto_encoder(self._config.input_shape)
-        m_input, m_output, masks, z_mean, z_log_var = loss_params
-        self._model.add_loss(self._vae_wl_loss(m_input, m_output, masks, z_mean,
-                                               z_log_var, x_train.shape[1], x_train.shape[2]))
+        self._model, self._encoder, self._decoder = self._create_auto_encoder(self._config.input_shape)
+        # m_input, m_output, masks, z_mean, z_log_var = loss_params
+        # self._model.add_loss(self._vae_wl_loss(m_input, m_output, masks, z_mean,
+                                            #    z_log_var, x_train.shape[1], x_train.shape[2]))
         self._model.compile(optimizer=Adam(self._config.learning_rate), loss=None, metrics=self._config.metrics)
 
         callbacks = []
