@@ -22,7 +22,7 @@ import torch.nn.functional as F  # Necessário para Softmax/Sigmoid
 
 # --- CONFIGURAÇÕES ---
 NUM_CLASSES = 2
-BATCH_SIZE = 32
+BATCH_SIZE = 16
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class EarlyStopping:
@@ -53,7 +53,7 @@ class EarlyStopping:
 # --- FUNÇÃO DE TREINAMENTO AJUSTADA ---
 def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs=10):
     """Ajustada para receber o DataLoader diretamente."""
-    early_stopping = EarlyStopping(patience=10, min_delta=1e-4)
+    early_stopping = EarlyStopping(patience=30, min_delta=1e-4)
 
     for epoch in range(num_epochs):
         print(f"\nEpoch {epoch+1}/{num_epochs}")
@@ -125,7 +125,7 @@ def evaluate_model(model, test_loader, device, num_classes=2):
         for inputs, labels in test_loader:
             inputs = inputs.to(device)
             outputs = model(inputs)
-            probs = F.softmax(outputs, dim=1)
+            probs = F.sigmoid(outputs)
 
             _, preds = torch.max(probs, 1)
 
@@ -151,10 +151,10 @@ _logger = MeLogger()
 ut = Utilities()
 results_accuracy = {}
 results_f1 = {}
+results_roc = {}
 
 skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
-model_vgg = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_V1)
 
 for fold, (train_val_idx, test_idx) in enumerate(skf.split(inbreast_images, labels)):
     _logger.info(f"\n[Fold {fold + 1}/5]")
@@ -164,21 +164,15 @@ for fold, (train_val_idx, test_idx) in enumerate(skf.split(inbreast_images, labe
 
     # Divide treino e validação internamente (ex: 20% para validação)
     x_train, x_val, y_train, y_val = train_test_split(
-        x_train_val, y_train_val, test_size=0.2, random_state=fold
+        x_train_val, y_train_val, test_size=0.2, random_state=fold, stratify=y_train_val
     )
 
     # Treinar a vgg16
-    
-    # 2. Opcional, mas recomendado: Congela os parâmetros do extrator de features
-    #    (as camadas convolucionais) para que apenas as camadas de classificação sejam treinadas
-    for param in model_vgg.parameters():
-        param.requires_grad = False
+    model_vgg = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_V1)
 
     # 1. Encontra o número de features de entrada da última camada (geralmente 4096)
     in_features = model_vgg.classifier[6].in_features
 
-    # 2. Substitui a camada final (índice 6) por uma nova camada linear
-    #    que mapeia as features (4096) para o seu número de classes (e.g., 5)
     model_vgg.classifier[6] = nn.Linear(in_features, NUM_CLASSES)
 
     # Opcional: Descongela as camadas do classificador para treinamento
@@ -188,11 +182,28 @@ for fold, (train_val_idx, test_idx) in enumerate(skf.split(inbreast_images, labe
     # Move o modelo para a GPU, se disponível
     model_vgg = model_vgg.to(device)
 
+    train_transform = transforms.Compose([
+    transforms.ToPILImage(),
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomVerticalFlip(),
+    transforms.RandomRotation(90),
+    # --- NOVO: Converta explicitamente para 3 canais ---
+    transforms.Grayscale(num_output_channels=3),
+    transforms.ToTensor(),
+    # --------------------------------------------------
+     # Este passo deve ser removido ou movido se o dataset já retorna tensores
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225])
+])
+    
     vgg_transforms = transforms.Compose(
         [
             transforms.ToPILImage(),  # Necessário para aplicar transformações de torchvision
             transforms.Resize(256),
             transforms.CenterCrop(224),
+            transforms.Grayscale(num_output_channels=3),
             transforms.ToTensor(),
             # Normalização padrão do ImageNet
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
@@ -200,7 +211,7 @@ for fold, (train_val_idx, test_idx) in enumerate(skf.split(inbreast_images, labe
     )
 
     # Crie os objetos Dataset
-    train_dataset = CustomImageDataset(x_train, y_train, transform=vgg_transforms)
+    train_dataset = CustomImageDataset(x_train, y_train, transform=train_transform)
     val_dataset = CustomImageDataset(x_val, y_val, transform=vgg_transforms)
     test_dataset = CustomImageDataset(x_test, y_test, transform=vgg_transforms)
 
@@ -209,12 +220,13 @@ for fold, (train_val_idx, test_idx) in enumerate(skf.split(inbreast_images, labe
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-    # Seu VGG16 agora treinará usando o 'train_loader'
     criterion = nn.CrossEntropyLoss()
 
-    # Escolhe apenas os parâmetros que estão DESCONGELADOS (se você congelou o 'features')
-    # Caso contrário, use model_vgg.parameters() para treinar tudo.
-    optimizer = optim.SGD(model_vgg.classifier.parameters(), lr=0.001, momentum=0.9)
+    optimizer = optim.AdamW(
+    model_vgg.parameters(), 
+    lr=1e-4, # LR mais alto para aprendizado do zero
+    weight_decay=1e-4
+)
 
     train_model(
         model=model_vgg,
@@ -222,7 +234,7 @@ for fold, (train_val_idx, test_idx) in enumerate(skf.split(inbreast_images, labe
         val_loader=val_loader,
         criterion=criterion,
         optimizer=optimizer,
-        num_epochs=30,
+        num_epochs=300,
     )
     # Predição
     y_true, y_pred, y_probs = evaluate_model(model_vgg, test_loader, device)
@@ -236,7 +248,8 @@ for fold, (train_val_idx, test_idx) in enumerate(skf.split(inbreast_images, labe
 
     results_accuracy[f"fold{fold}"] = round(acc, 4)
     results_f1[f"fold{fold}"] = round(f1, 4)
+    results_roc[f"fold{fold}"] = round(roc_auc, 4)
 
-results = pd.DataFrame({"ACC": results_accuracy, "F1": results_f1})
+results = pd.DataFrame({"ACC": results_accuracy, "F1": results_f1, "AUC_ROC":results_roc})
 
 results.to_csv(f"./results/baseline_results.csv")
