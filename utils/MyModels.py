@@ -18,7 +18,7 @@ from algorithms.vae import ConfigVAE
 from algorithms.vaewl import VAEWL
 from utils.MeLogSingle import MeLogger
 
-from algorithms.wrappers import KNNWrapper, MICEWrapper, MCWrapper, VAEWrapper
+from algorithms.wrappers import KNNWrapper, MICEWrapper, MCWrapper
 
 
 import numpy as np
@@ -30,11 +30,12 @@ from keras.layers import Conv2D, Dense, Flatten, Dropout, MaxPooling2D
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.callbacks import EarlyStopping
 
-from algorithms.mae_vit import MAE
-from algorithms.vit import ViT
+# from algorithms.mae_vit import MAE
+# from algorithms.vit import ViT
 
 from keras.layers import Activation
-
+from algorithms import models_mae
+import torch 
 
 # Ignorar todos os avisos
 warnings.filterwarnings("ignore")
@@ -55,14 +56,14 @@ class ModelsImputation:
 
         vae_wl_config = ConfigVAE()
         vae_wl_config.verbose = 1
-        vae_wl_config.epochs = 200
-        vae_wl_config.filters = [32, 64]
-        vae_wl_config.kernels = 3
+        vae_wl_config.epochs = 100
+        vae_wl_config.filters = [16, 32]
+        vae_wl_config.kernels = 1
         vae_wl_config.neurons = [392, 196]
         vae_wl_config.dropout = [0.2, 0.2]
-        vae_wl_config.latent_dimension = 32
-        vae_wl_config.batch_size = 64
-        vae_wl_config.learning_rate = 0.001
+        vae_wl_config.latent_dimension = 16
+        vae_wl_config.batch_size = 16
+        vae_wl_config.learning_rate = 0.0001
         vae_wl_config.activation = "relu"
         vae_wl_config.output_activation = "sigmoid"
         vae_wl_config.loss = tf.keras.losses.binary_crossentropy
@@ -76,54 +77,86 @@ class ModelsImputation:
         return vaewl
 
     # ------------------------------------------------------------------------
-    def model_mae_vit():
-        encoder = ViT(
-            image_size=256,
-            patch_size=32,
-            num_classes=1000,
-            dim=1024,
-            depth=6,
-            heads=8,
-            mlp_dim=2048,
-        )
-
-        mae_custom = MAE(
-            encoder=encoder,
-            masking_ratio=0.75,
-            decoder_dim=512,
-            decoder_depth=8,
-            decoder_heads=8,
-            decoder_dim_head=64,
-        )
-
-        return mae_custom
+    @staticmethod
+    def model_mae_vit(chkpt_dir, arch='mae_vit_large_patch16'):
+        # build model
+        model = getattr(models_mae, arch)()
+        # load model
+        checkpoint = torch.load(chkpt_dir, map_location='cuda')
+        msg = model.load_state_dict(checkpoint['model'], strict=False)
+        print(msg)
+        return model
+        
 
     # ------------------------------------------------------------------------
+    @staticmethod
     def model_knn():
         knn = KNNWrapper(n_neighbors=3)
         return knn
 
     # ------------------------------------------------------------------------
+    @staticmethod
     def model_mice(x_train: np.ndarray):
 
         mice = MICEWrapper(max_iter=100, x_train=x_train)
         return mice
 
     # ------------------------------------------------------------------------
+    @staticmethod
     def model_mc():
         mc = MCWrapper()
         return mc
 
-    # ------------------------------------------------------------------------
-    def model_cvae(x_train: np.ndarray, x_train_md: np.ndarray, mask_train: np.ndarray):
-        cvae = VAEWrapper(
-            images_train_val=x_train,
-            images_with_mv_train_val=x_train_md,
-            masks_train_val=mask_train,
-        )
-        cvae.train()
-        return cvae
+    @staticmethod
+    def mae_imputer_transform(model, x_test_md_np, missing_mask_test_np):
+        """
+        Adapta a lógica MAE para imputar o lote de teste x_test_md.
+        """
+        model.eval() # Modo de avaliação (inferência)
 
+        # 1. Preparação dos Tensores
+        x = torch.tensor(x_test_md_np)
+        x = x.repeat(1, 1, 1, 3) # Dados incompletos
+        mask_ext = torch.tensor(missing_mask_test_np) # Máscara de ausência
+        
+        x = x.float() # MAE espera float32
+        x = torch.einsum('nhwc->nchw', x) 
+        mask_ext = mask_ext.float()
+        mask_ext = torch.einsum('nhwc->nchw', mask_ext) 
+        
+        # 3. Execução do MAE (Modo Imputação)
+        with torch.no_grad():
+            # O MAE precisa saber ONDE a imagem está mascarada (missing)
+            # Se o seu modelo MAE for um modelo padrão, ele espera a imagem completa (corrompida)
+            # e a máscara (se for um C-MAE modificado).
+            
+            # Simulação de Imputação: Rodar o MAE sem a máscara interna
+            # Aqui assumimos que o MAE modificado retorna apenas a reconstrução (y)
+            # É provável que seu modelo espere a imagem corrompida e a máscara externa para reconstrução.
+            
+            # Para modelos MAE de imputação, o 'x' é a entrada, e a máscara externa é usada 
+            # para indicar o que está faltando.
+            
+            # 3.1. Chamada do Modelo (Formato mais simples)
+            # Se o seu MAE foi treinado apenas com 'x' (imagem corrompida), 
+            # ele gera a reconstrução 'y' e a máscara 'mask' interna
+            loss, y_reconstructed, mask_int = model(x, mask_ratio=0.75) # mask_ratio=0.0 tenta desabilitar a máscara interna
+
+            # 4. Processamento da Reconstrução
+            y_recon = model.unpatchify(y_reconstructed)
+            
+            # Transposição de volta para NHWC
+            y_recon_nhwc = torch.einsum('nchw->nhwc', y_recon).cpu().numpy()
+            x_nhwc = torch.einsum('nchw->nhwc', x).cpu().numpy()
+            mask_ext_nhwc = torch.einsum('nchw->nhwc', mask_ext).cpu().numpy()
+            
+            # 5. Colagem (Onde a imputação real acontece)
+            # Imagem Imputada = Visível (x_test_md) + Reconstruído (y_recon) nas áreas ausentes
+            imputed_image = x_nhwc * (1 - mask_ext_nhwc) + y_recon_nhwc * mask_ext_nhwc
+            imputed_image_gray = np.mean(imputed_image, axis=-1, keepdims=True)
+            
+        return imputed_image_gray
+    
     # ------------------------------------------------------------------------
     def choose_model(
         self,
@@ -154,17 +187,20 @@ class ModelsImputation:
 
             case "mc":
                 self._logger.info("[MC] Training...")
-                return ModelsImputation.model_mc(x_train=x_train)
-
-            case "cvae":
-                self._logger.info("[CVAE] Training...")
-                return ModelsImputation.model_cvae(
-                    x_train=x_train, x_train_md=x_train_md, mask_train=mask_train
-                )
+                return ModelsImputation.model_mc()
 
             case "mae-vit":
                 # Loop de treinamento para o MAE-ViT
-                self._logger.info("")
+                self._logger.info("[MAE-ViT] Importing...")
+                model_pth = "/home/gpu-10-2025/Área de trabalho/Modelos/mae_visualize_vit_large.pth"
+                return ModelsImputation.model_mae_vit(model_pth)
+                 
+            
+            case "mae-vit-gan":
+                # Loop de treinamento para o MAE-ViT
+                self._logger.info("[MAE-ViT] Importing...")
+                model_pth = "/home/gpu-10-2025/Área de trabalho/Modelos/mae_visualize_vit_large_ganloss.pth"
+                return ModelsImputation.model_mae_vit(model_pth)
 
 
 class CNN:

@@ -1,6 +1,5 @@
 from fancyimpute import KNN, IterativeImputer, IterativeSVD
 import numpy as np
-from algorithms.cvae import CVAE
 
 
 class KNNWrapper:
@@ -76,41 +75,3 @@ class MCWrapper:
             imputed_images.append(imputed_image)
 
         return np.array(imputed_images)
-
-
-class VAEWrapper:
-
-    def __init__(
-        self,
-        images_train_val,
-        images_with_mv_train_val,
-        masks_train_val,
-    ):
-
-        custom_configurations = {
-            "dense_hidden_layers_encoder": [392, 196],
-            "dense_hidden_layers_decoder": [392],
-            "latent_dim": 32,
-            "reconstruction_missing_values_weight": 1,
-            "kullback_leibler_weight": 1,
-            "dropout_rate": 0.2,
-            "l2_lambda": 0.01,
-            "reduce_learning_rate_factor": 0.2,
-            "reduce_learning_rate_patience": 10,
-            "early_stopping_patience": 10,
-            "epochs": 200,
-            "validation_size": 0.1428,
-        }
-        self.model = CVAE(
-            custom_configurations,
-            images_train_val,
-            images_with_mv_train_val,
-            masks_train_val,
-        )
-        return
-
-    def train(self):
-        self.model.create_and_train()
-
-    def transform(self, images_with_mv_test, masks_test):
-        return self.model.predict([images_with_mv_test, masks_test])

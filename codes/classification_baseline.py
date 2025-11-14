@@ -139,117 +139,120 @@ def evaluate_model(model, test_loader, device, num_classes=2):
 
     return np.array(y_true), np.array(y_pred), np.array(y_probs)
 
+if __name__ == "__main__":
 
-# Baseline Original Images
-data = Datasets("inbreast")
-inbreast_images, labels_names, img_ids = data.load_data()
+    # Baseline Original Images
+    data = Datasets("inbreast")
+    inbreast_images, labels_names, img_ids = data.load_data()
 
-image_ids = np.array(img_ids)
-labels = np.array([labels_names[i] for i in image_ids])
+    image_ids = np.array(img_ids)
+    labels = np.array([labels_names[i] for i in image_ids])
 
-_logger = MeLogger()
-ut = Utilities()
-results_accuracy = {}
-results_f1 = {}
-results_roc = {}
+    _logger = MeLogger()
+    ut = Utilities()
+    results_accuracy = {}
+    results_f1 = {}
+    results_roc = {}
 
-skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
 
-for fold, (train_val_idx, test_idx) in enumerate(skf.split(inbreast_images, labels)):
-    _logger.info(f"\n[Fold {fold + 1}/5]")
+    for fold, (train_val_idx, test_idx) in enumerate(skf.split(inbreast_images, labels)):
+        _logger.info(f"\n[Fold {fold + 1}/5]")
 
-    x_train_val, x_test = inbreast_images[train_val_idx], inbreast_images[test_idx]
-    y_train_val, y_test = labels[train_val_idx], labels[test_idx]
+        x_train_val, x_test = inbreast_images[train_val_idx], inbreast_images[test_idx]
+        y_train_val, y_test = labels[train_val_idx], labels[test_idx]
 
-    # Divide treino e validação internamente (ex: 20% para validação)
-    x_train, x_val, y_train, y_val = train_test_split(
-        x_train_val, y_train_val, test_size=0.2, random_state=fold, stratify=y_train_val
+        # Divide treino e validação internamente (ex: 20% para validação)
+        x_train, x_val, y_train, y_val = train_test_split(
+            x_train_val, y_train_val, test_size=0.2, random_state=fold, stratify=y_train_val
+        )
+
+        # Treinar a vgg16
+        model_vgg = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_V1)
+
+        # 1. Encontra o número de features de entrada da última camada (geralmente 4096)
+        in_features = model_vgg.classifier[6].in_features
+
+        model_vgg.classifier[6] = nn.Linear(in_features, NUM_CLASSES)
+
+        # Opcional: Descongela as camadas do classificador para treinamento
+        for param in model_vgg.classifier.parameters():
+            param.requires_grad = True
+
+        # Move o modelo para a GPU, se disponível
+        model_vgg = model_vgg.to(device)
+
+        train_transform = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomVerticalFlip(),
+        transforms.RandomRotation(90),
+        transforms.ColorJitter(brightness=0.3,
+                               contrast=0.2,
+                               saturation=0,
+                               hue=0),
+        transforms.GaussianBlur(kernel_size=3),
+        transforms.Grayscale(num_output_channels=3),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                            std=[0.229, 0.224, 0.225])
+    ])
+        
+        vgg_transforms = transforms.Compose(
+            [
+                transforms.ToPILImage(),  # Necessário para aplicar transformações de torchvision
+                transforms.Resize(256),
+                transforms.CenterCrop(224),
+                transforms.Grayscale(num_output_channels=3),
+                transforms.ToTensor(),
+                # Normalização padrão do ImageNet
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ]
+        )
+
+        # Crie os objetos Dataset
+        train_dataset = CustomImageDataset(x_train, y_train, transform=train_transform)
+        val_dataset = CustomImageDataset(x_val, y_val, transform=vgg_transforms)
+        test_dataset = CustomImageDataset(x_test, y_test, transform=vgg_transforms)
+
+        # Crie os DataLoaders para iteração
+        train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
+        test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
+
+        criterion = nn.CrossEntropyLoss()
+
+        optimizer = optim.AdamW(
+        model_vgg.parameters(), 
+        lr=1e-5, 
+        weight_decay=1e-4
     )
 
-    # Treinar a vgg16
-    model_vgg = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_V1)
+        train_model(
+            model=model_vgg,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            criterion=criterion,
+            optimizer=optimizer,
+            num_epochs=300,
+        )
+        # Predição
+        y_true, y_pred, y_probs = evaluate_model(model_vgg, test_loader, device)
 
-    # 1. Encontra o número de features de entrada da última camada (geralmente 4096)
-    in_features = model_vgg.classifier[6].in_features
+        roc_auc = roc_auc_score(y_true=y_true, y_score=y_probs)
+        _logger.info(f"ROC AUC: {roc_auc:.4f}")
 
-    model_vgg.classifier[6] = nn.Linear(in_features, NUM_CLASSES)
+        # 4. Salva métricas
+        acc = accuracy_score(y_true=y_true, y_pred=y_pred)
+        f1 = f1_score(y_true=y_true, y_pred=y_pred)
 
-    # Opcional: Descongela as camadas do classificador para treinamento
-    for param in model_vgg.classifier.parameters():
-        param.requires_grad = True
+        results_accuracy[f"fold{fold}"] = round(acc, 4)
+        results_f1[f"fold{fold}"] = round(f1, 4)
+        results_roc[f"fold{fold}"] = round(roc_auc, 4)
 
-    # Move o modelo para a GPU, se disponível
-    model_vgg = model_vgg.to(device)
+    results = pd.DataFrame({"ACC": results_accuracy, "F1": results_f1, "AUC_ROC":results_roc})
 
-    train_transform = transforms.Compose([
-    transforms.ToPILImage(),
-    transforms.Resize(256),
-    transforms.CenterCrop(224),
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomVerticalFlip(),
-    transforms.RandomRotation(90),
-    # --- NOVO: Converta explicitamente para 3 canais ---
-    transforms.Grayscale(num_output_channels=3),
-    transforms.ToTensor(),
-    # --------------------------------------------------
-     # Este passo deve ser removido ou movido se o dataset já retorna tensores
-    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                         std=[0.229, 0.224, 0.225])
-])
-    
-    vgg_transforms = transforms.Compose(
-        [
-            transforms.ToPILImage(),  # Necessário para aplicar transformações de torchvision
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.Grayscale(num_output_channels=3),
-            transforms.ToTensor(),
-            # Normalização padrão do ImageNet
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]
-    )
-
-    # Crie os objetos Dataset
-    train_dataset = CustomImageDataset(x_train, y_train, transform=train_transform)
-    val_dataset = CustomImageDataset(x_val, y_val, transform=vgg_transforms)
-    test_dataset = CustomImageDataset(x_test, y_test, transform=vgg_transforms)
-
-    # Crie os DataLoaders para iteração
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
-
-    criterion = nn.CrossEntropyLoss()
-
-    optimizer = optim.AdamW(
-    model_vgg.parameters(), 
-    lr=1e-5, # LR mais alto para aprendizado do zero
-    weight_decay=1e-4
-)
-
-    train_model(
-        model=model_vgg,
-        train_loader=train_loader,
-        val_loader=val_loader,
-        criterion=criterion,
-        optimizer=optimizer,
-        num_epochs=300,
-    )
-    # Predição
-    y_true, y_pred, y_probs = evaluate_model(model_vgg, test_loader, device)
-
-    roc_auc = roc_auc_score(y_true=y_true, y_score=y_probs)
-    _logger.info(f"ROC AUC: {roc_auc:.4f}")
-
-    # 4. Salva métricas
-    acc = accuracy_score(y_true=y_true, y_pred=y_pred)
-    f1 = f1_score(y_true=y_true, y_pred=y_pred)
-
-    results_accuracy[f"fold{fold}"] = round(acc, 4)
-    results_f1[f"fold{fold}"] = round(f1, 4)
-    results_roc[f"fold{fold}"] = round(roc_auc, 4)
-
-results = pd.DataFrame({"ACC": results_accuracy, "F1": results_f1, "AUC_ROC":results_roc})
-
-results.to_csv(f"./results/baseline_results.csv")
+    results.to_csv(f"./results/baseline_results.csv")

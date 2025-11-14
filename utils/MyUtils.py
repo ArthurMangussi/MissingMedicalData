@@ -29,6 +29,8 @@ class Utilities:
 
             # Se for 2D (grayscale), converte diretamente
             img_pil = Image.fromarray(img)
+            if img_pil.mode != 'L':
+                img_pil = img_pil.convert('L')
 
             img_pil.save(os.path.join(save_dir, f"IMG_{count:04d}.png"))
         

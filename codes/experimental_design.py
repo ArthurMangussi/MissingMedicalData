@@ -64,7 +64,15 @@ def run_experimental_design(model_impt:str,
                                     mask_train=missing_mask_train
                                     )
 
-        x_test_imputed = imputer.transform(x_test_md)
+        if model_impt == "mae-vit" or model_impt == "mae-vit-gan":
+
+            x_test_imputed = model.mae_imputer_transform(model=imputer,
+                                        x_test_md_np=x_test,
+                                        missing_mask_test_np=missing_mask_test)
+        
+        else:
+            x_test_imputed = imputer.transform(x_test_md)
+          
 
         ## Save the reconstructed image
         ut.save_image(mechanism=md_mechanism,
@@ -109,6 +117,6 @@ if __name__ == "__main__":
     data = Datasets('inbreast')
     inbreast_images, y_mapped, image_ids = data.load_data()
     
-    run_experimental_design("mice",0.05,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
-    run_experimental_design("mice",0.10,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
-    run_experimental_design("mice",0.20,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
+    run_experimental_design("mae-vit-gan",0.05,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
+    run_experimental_design("mae-vit-gan",0.10,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
+    run_experimental_design("mae-vit-gan",0.20,MD_MECHANISM,inbreast_images, y_mapped, image_ids)

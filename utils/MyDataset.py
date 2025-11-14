@@ -61,7 +61,7 @@ class Datasets:
         process.
 
         """
-        data_dir = f"/home/mult-e/Área de trabalho/MissingMedicalData/results/{model_impt}/imputed_images/"
+        data_dir = f"/home/gpu-10-2025/Área de trabalho/MissingMedicalData/results/{model_impt}/imputed_images/"
 
         fold0, fold1, fold2, fold3, fold4, labels = [], [], [], [], [], []
         for fold in range(5):
@@ -72,6 +72,7 @@ class Datasets:
                     caminho_imagem = os.path.join(impt_dir, nome_arquivo)
 
                     imagem = cv2.imread(caminho_imagem, cv2.IMREAD_GRAYSCALE)
+                    imagem = cv2.resize(imagem, (224, 224))
 
                     if fold == 0:
                         fold0.append(imagem)
@@ -91,7 +92,7 @@ class Datasets:
                 elif nome_arquivo.endswith(".csv"):
                     caminho_csv = impt_dir + "/classes.csv"
                     df = pd.read_csv(caminho_csv)
-                    labels.append(df.iloc[:, 1].values)
+                    labels.append(df.iloc[:, 2].values)
 
                 else:
                     raise ValueError(f"Erro ao ler a imagem: {nome_arquivo}")
@@ -128,7 +129,6 @@ class Datasets:
                 y_dict = self._load_inbreast_labels()
 
                 return images, y_dict, image_ids
-
 
 class CustomImageDataset(Dataset):
     def __init__(self, images_array, labels_array, transform=None):
