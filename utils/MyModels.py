@@ -91,7 +91,7 @@ class ModelsImputation:
     # ------------------------------------------------------------------------
     @staticmethod
     def model_knn():
-        knn = KNNWrapper(n_neighbors=3)
+        knn = KNNWrapper(n_neighbors=5)
         return knn
 
     # ------------------------------------------------------------------------
@@ -108,7 +108,7 @@ class ModelsImputation:
         return mc
 
     @staticmethod
-    def mae_imputer_transform(model, x_test_md_np, missing_mask_test_np):
+    def mae_imputer_transform(model, x_test_md_np, missing_mask_test_np, missing_rate):
         """
         Adapta a lógica MAE para imputar o lote de teste x_test_md.
         """
@@ -126,21 +126,7 @@ class ModelsImputation:
         
         # 3. Execução do MAE (Modo Imputação)
         with torch.no_grad():
-            # O MAE precisa saber ONDE a imagem está mascarada (missing)
-            # Se o seu modelo MAE for um modelo padrão, ele espera a imagem completa (corrompida)
-            # e a máscara (se for um C-MAE modificado).
-            
-            # Simulação de Imputação: Rodar o MAE sem a máscara interna
-            # Aqui assumimos que o MAE modificado retorna apenas a reconstrução (y)
-            # É provável que seu modelo espere a imagem corrompida e a máscara externa para reconstrução.
-            
-            # Para modelos MAE de imputação, o 'x' é a entrada, e a máscara externa é usada 
-            # para indicar o que está faltando.
-            
-            # 3.1. Chamada do Modelo (Formato mais simples)
-            # Se o seu MAE foi treinado apenas com 'x' (imagem corrompida), 
-            # ele gera a reconstrução 'y' e a máscara 'mask' interna
-            loss, y_reconstructed, mask_int = model(x, mask_ratio=0.75) # mask_ratio=0.0 tenta desabilitar a máscara interna
+            loss, y_reconstructed, mask_int = model(x, mask_ratio=missing_rate) 
 
             # 4. Processamento da Reconstrução
             y_recon = model.unpatchify(y_reconstructed)
@@ -149,9 +135,7 @@ class ModelsImputation:
             y_recon_nhwc = torch.einsum('nchw->nhwc', y_recon).cpu().numpy()
             x_nhwc = torch.einsum('nchw->nhwc', x).cpu().numpy()
             mask_ext_nhwc = torch.einsum('nchw->nhwc', mask_ext).cpu().numpy()
-            
-            # 5. Colagem (Onde a imputação real acontece)
-            # Imagem Imputada = Visível (x_test_md) + Reconstruído (y_recon) nas áreas ausentes
+
             imputed_image = x_nhwc * (1 - mask_ext_nhwc) + y_recon_nhwc * mask_ext_nhwc
             imputed_image_gray = np.mean(imputed_image, axis=-1, keepdims=True)
             

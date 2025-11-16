@@ -139,17 +139,29 @@ def run_pipeline(MODEL_IMPT, MD_MECHANISM, MISSING_RATE):
 
 if __name__ == "__main__":
     
-    MD_MECHANISM = "MNAR"
+    MD_MECHANISM = "MCAR"
 
-    run_pipeline("knn",MD_MECHANISM, 0.05)
-    run_pipeline("knn",MD_MECHANISM, 0.10)
-    run_pipeline("knn",MD_MECHANISM, 0.20)
-    run_pipeline("mc",MD_MECHANISM, 0.05)
-    run_pipeline("mc",MD_MECHANISM, 0.10)
-    run_pipeline("mc",MD_MECHANISM, 0.20)
-    run_pipeline("vaewl",MD_MECHANISM, 0.05)
-    run_pipeline("vaewl",MD_MECHANISM, 0.10)
-    run_pipeline("vaewl",MD_MECHANISM, 0.20)
-    run_pipeline("mice",MD_MECHANISM, 0.05)
-    run_pipeline("mice",MD_MECHANISM, 0.10)
-    run_pipeline("mice",MD_MECHANISM, 0.20)
+    run_pipeline("knn",MD_MECHANISM, 0.30)
+    run_pipeline("knn",MD_MECHANISM, 0.40)
+    run_pipeline("knn",MD_MECHANISM, 0.50)
+
+    run_pipeline("mc",MD_MECHANISM, 0.30)
+    run_pipeline("mc",MD_MECHANISM, 0.40)
+    run_pipeline("mc",MD_MECHANISM, 0.50)
+
+    run_pipeline("mice",MD_MECHANISM, 0.30)
+    run_pipeline("mice",MD_MECHANISM, 0.40)
+    run_pipeline("mice",MD_MECHANISM, 0.50)
+
+    run_pipeline("vaewl",MD_MECHANISM, 0.30)
+    run_pipeline("vaewl",MD_MECHANISM, 0.40)
+    run_pipeline("vaewl",MD_MECHANISM, 0.50)
+
+    run_pipeline("mae-vit",MD_MECHANISM, 0.30)
+    run_pipeline("mae-vit",MD_MECHANISM, 0.40)
+    run_pipeline("mae-vit",MD_MECHANISM, 0.50)
+
+    run_pipeline("mae-vit-gan",MD_MECHANISM, 0.30)
+    run_pipeline("mae-vit-gan",MD_MECHANISM, 0.40)
+    run_pipeline("mae-vit-gan",MD_MECHANISM, 0.50)
+    

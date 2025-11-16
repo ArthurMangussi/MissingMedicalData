@@ -68,7 +68,8 @@ def run_experimental_design(model_impt:str,
 
             x_test_imputed = model.mae_imputer_transform(model=imputer,
                                         x_test_md_np=x_test,
-                                        missing_mask_test_np=missing_mask_test)
+                                        missing_mask_test_np=missing_mask_test,
+                                        missing_rate=missing_rate)
         
         else:
             x_test_imputed = imputer.transform(x_test_md)
@@ -117,6 +118,6 @@ if __name__ == "__main__":
     data = Datasets('inbreast')
     inbreast_images, y_mapped, image_ids = data.load_data()
     
-    run_experimental_design("mae-vit-gan",0.05,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
-    run_experimental_design("mae-vit-gan",0.10,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
-    run_experimental_design("mae-vit-gan",0.20,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
+    run_experimental_design("mae-vit-gan",0.30,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
+    run_experimental_design("mae-vit-gan",0.40,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
+    run_experimental_design("mae-vit-gan",0.50,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
