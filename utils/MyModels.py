@@ -117,6 +117,8 @@ class ModelsImputation:
         # 1. Preparação dos Tensores
         x = torch.tensor(x_test_md_np)
         x = x.repeat(1, 1, 1, 3) # Dados incompletos
+        if len(missing_mask_test_np.shape) == 3:
+            missing_mask_test_np = np.expand_dims(missing_mask_test_np, axis=-1)
         mask_ext = torch.tensor(missing_mask_test_np) # Máscara de ausência
         
         x = x.float() # MAE espera float32
@@ -126,7 +128,7 @@ class ModelsImputation:
         
         # 3. Execução do MAE (Modo Imputação)
         with torch.no_grad():
-            loss, y_reconstructed, mask_int = model(x, mask_ratio=missing_rate) 
+            loss, y_reconstructed, mask_int = model(x, mask_ratio=0.75) 
 
             # 4. Processamento da Reconstrução
             y_recon = model.unpatchify(y_reconstructed)

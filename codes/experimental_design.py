@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_absolute_error
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
 from codes.data_amputation import ImageDataAmputation
@@ -18,8 +18,6 @@ from utils.MeLogSingle import MeLogger
 from utils.MyDataset import Datasets
 from utils.MyModels import ModelsImputation
 from utils.MyUtils import Utilities
-
-import multiprocessing
 
 def run_experimental_design(model_impt:str,
                             missing_rate: float,
@@ -51,9 +49,13 @@ def run_experimental_design(model_impt:str,
     )
 
         amputation = ImageDataAmputation(missing_rate=missing_rate)
-        x_train, x_train_md, missing_mask_train = amputation.generate_missing_mask_mcar(x_train)
-        x_val, x_val_md, _ = amputation.generate_missing_mask_mcar(x_val)
-        x_test, x_test_md, missing_mask_test = amputation.generate_missing_mask_mcar(x_test)
+        x_train, x_train_md, missing_mask_train = amputation.generate_random_squares_mask(x_train,
+                                                                                          num_squares=1,
+                                                                                          square_size=40)
+        x_val, x_val_md, _ = amputation.generate_random_squares_mask(x_val, num_squares=1,
+                                                                                          square_size=40)
+        x_test, x_test_md, missing_mask_test = amputation.generate_random_squares_mask(x_test, num_squares=1,
+                                                                                          square_size=40)
 
         model = ModelsImputation()
         imputer = model.choose_model(model=model_impt, 
@@ -87,7 +89,7 @@ def run_experimental_design(model_impt:str,
         ## Measure the imputation performance
         missing_mask_test_flat = missing_mask_test.astype(bool).flatten()
 
-        mse = mean_squared_error(x_test_imputed.flatten()[missing_mask_test_flat],
+        mse = mean_absolute_error(x_test_imputed.flatten()[missing_mask_test_flat],
                                     x_test.flatten()[missing_mask_test_flat])
         psnr = peak_signal_noise_ratio(x_test_imputed.flatten()[missing_mask_test_flat],
                                     x_test.flatten()[missing_mask_test_flat],
@@ -109,15 +111,19 @@ def run_experimental_design(model_impt:str,
     results = pd.DataFrame({"MSE":results_mse,
                         "PSNR":results_psnr,
                         "SSIM": results_ssim})
-    results.to_csv(f"./results/{model_impt}/{md_mechanism}_{missing_rate}_results.csv")
+    results.to_csv(f"./new_results/{model_impt}/{model_impt}_{md_mechanism}_{missing_rate}_results.csv")
 
 if __name__ == "__main__":
-    MD_MECHANISM = "MCAR"
+    MD_MECHANISM = "Hole"
+    model_impt = "vaewl"
 
     # Carregar as imagens
     data = Datasets('inbreast')
     inbreast_images, y_mapped, image_ids = data.load_data()
     
-    run_experimental_design("mae-vit-gan",0.30,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
-    run_experimental_design("mae-vit-gan",0.40,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
-    run_experimental_design("mae-vit-gan",0.50,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
+    #run_experimental_design(model_impt,0.05,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
+    #run_experimental_design(model_impt,0.10,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
+    #run_experimental_design(model_impt,0.20,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
+    #run_experimental_design(model_impt,0.30,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
+    #run_experimental_design(model_impt,0.40,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
+    run_experimental_design(model_impt,0.50,MD_MECHANISM,inbreast_images, y_mapped, image_ids)

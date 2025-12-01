@@ -61,7 +61,7 @@ class Datasets:
         process.
 
         """
-        data_dir = f"/home/gpu-10-2025/Área de trabalho/MissingMedicalData/results/{model_impt}/imputed_images/"
+        data_dir = f"/home/gpu-10-2025/Área de trabalho/MissingMedicalData/new_results/{model_impt}/imputed_images/"
 
         fold0, fold1, fold2, fold3, fold4, labels = [], [], [], [], [], []
         for fold in range(5):

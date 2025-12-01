@@ -28,9 +28,14 @@ class ImageDataAmputation:
         x_data = x_data.astype('float32') / 255
 
         number_channels = x_data.shape[3]
-        missing_mask = np.stack(
+        foreground_mask_2d = np.any(x_data != 0, axis=-1)
+
+        missing_mask_2d = np.stack(
             (np.random.choice([0, 1], size=(x_data.shape[0], x_data.shape[1], x_data.shape[2]),
                             p=[1 - self.missing_rate, self.missing_rate]),) * number_channels, axis=-1)
+        
+        missing_mask_limited_2d = np.squeeze(missing_mask_2d, axis=-1) * foreground_mask_2d
+        missing_mask = np.stack((missing_mask_limited_2d,) * number_channels, axis=-1)
 
         x_data_md = x_data * (~missing_mask.astype(bool)).astype(int) + -1.0 * missing_mask
         x_data_md[x_data_md == -1] = np.nan
@@ -55,6 +60,7 @@ class ImageDataAmputation:
     
         x_data = x_data.astype('float32') / 255
         number_channels = x_data.shape[3]
+        foreground_mask_2d = np.any(x_data != 0, axis=-1)
 
         # Calcula a média dos canais (caso tenha mais de 1)
         grayscale = x_data.mean(axis=-1)  # Shape: (N, H, W)
@@ -69,8 +75,8 @@ class ImageDataAmputation:
         # Gera máscara com base nas probabilidades
         missing_mask = np.random.binomial(1, prob_missing).astype(np.uint8)  # Shape: (N, H, W)
 
-        # Estende para todos os canais
-        missing_mask = np.stack([missing_mask] * number_channels, axis=-1)  # Shape: (N, H, W, C)
+        missing_mask_limited_2d = missing_mask * foreground_mask_2d
+        missing_mask = np.stack((missing_mask_limited_2d,) * number_channels, axis=-1)
 
         # Aplica missing
         x_data_md = x_data * (~missing_mask.astype(bool)).astype(int) + -1.0 * missing_mask
@@ -79,4 +85,81 @@ class ImageDataAmputation:
         return x_data, x_data_md, missing_mask
 
 
+    def generate_random_squares_mask(self,x_data: np.ndarray, num_squares: int = 4, square_size: int = 5) -> np.ndarray:
+        """
+        Gera uma máscara binária 2D com 'num_squares' quadrados de 'square_size' x 'square_size'.
+        Os quadrados são posicionados aleatoriamente APENAS em pixels não-zero da imagem.
+
+        Args:
+            image_2d: Array NumPy 2D da imagem (H, W).
+            num_squares: Número de quadrados a serem gerados (padrão é 4).
+            square_size: Tamanho do lado do quadrado (padrão é 5).
+
+        Returns:
+            Um array NumPy 2D (H, W) representando a máscara binária (0s e 1s).
+        """
+        # Garante que a entrada seja 4D (N, H, W, C)
+        if len(x_data.shape) == 3:
+            x_data = np.expand_dims(x_data, axis=-1)
+
+        N, H, W, C = x_data.shape
         
+        # 1. Inicializar a lista para armazenar as máscaras 2D de cada imagem
+        all_missing_masks_2d = []
+
+        # 2. Iterar sobre cada imagem no batch
+        for i in range(N):
+            # A. Fatiar a imagem atual (2D, considerando apenas o primeiro canal para simplicidade)
+            # Assumindo que o foreground é o mesmo em todos os canais
+            image_2d = x_data[i, :, :, 0]
+            
+            # B. Identificar as Coordenadas Válidas DENTRO DESTA IMAGEM 2D
+            # np.where retorna apenas (H, W)
+            valid_y, valid_x = np.where(image_2d > 0)
+            valid_indices = np.arange(len(valid_y))
+            
+            # C. Inicializar a máscara 2D para esta imagem
+            mask_2d = np.zeros((H, W), dtype=np.uint8)
+
+            # D. Iterar para gerar cada quadrado
+            for _ in range(num_squares):
+                if len(valid_indices) == 0:
+                    break
+                    
+                rand_idx = np.random.choice(valid_indices)
+                center_y = valid_y[rand_idx]
+                center_x = valid_x[rand_idx]
+                
+                # Cálculo dos limites do quadrado (H, W)
+                start_y = max(0, center_y)
+                end_y = min(H, center_y + square_size)
+                start_x = max(0, center_x)
+                end_x = min(W, center_x + square_size)
+
+                # E. Aplicar o quadrado NA MÁSCARA 2D ATUAL
+                mask_2d[start_y:end_y, start_x:end_x] = 1
+            
+            # Adicionar a máscara 2D gerada à lista
+            all_missing_masks_2d.append(mask_2d)
+
+        # 3. Empilhar as máscaras 2D de volta em um array 3D (N, H, W)
+        missing_mask_3d = np.stack(all_missing_masks_2d, axis=0)
+
+        # 4. Expansão para Canais e Aplicação da Falta (Como no seu código original)
+        # Transforma a máscara (N, H, W) em (N, H, W, C) para multiplicação
+        # (Adiciona a dimensão do canal para broadcasting)
+        missing_mask_4d = np.expand_dims(missing_mask_3d, axis=-1)
+        missing_mask_4d = np.repeat(missing_mask_4d, C, axis=-1)
+        
+        # Aplica missing: onde a máscara é 1, o valor será -1.0 temporariamente
+        x_data_md = x_data * (~missing_mask_4d.astype(bool)).astype(x_data.dtype) + -1.0 * missing_mask_4d
+
+        # Converte o -1.0 para np.nan. Isso requer que x_data_md seja float.
+        # Se x_data for int, você precisa primeiro converter a saída para float:
+        if x_data.dtype.kind in np.typecodes['AllInteger']:
+            x_data_md = x_data_md.astype(np.float32)
+
+        x_data_md[x_data_md == -1] = np.nan
+
+        # Retornamos o x_data original, o corrompido, e a máscara 3D (N, H, W) se for usada no loss
+        return x_data, x_data_md, missing_mask_3d

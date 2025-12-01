@@ -15,7 +15,7 @@ class Utilities:
         """
         Method to save the array as an image.
         """
-        save_dir = f"./results/{model_impt}/imputed_images/fold{fold}_{mechanism}_{missing_rate}"
+        save_dir = f"./new_results/{model_impt}/imputed_images/fold{fold}_{mechanism}_{missing_rate}"
         os.makedirs(save_dir, exist_ok=True)
         
         labels = np.array([{str(i):labels_names[i]} for i in image_ids])
@@ -29,8 +29,8 @@ class Utilities:
 
             # Se for 2D (grayscale), converte diretamente
             img_pil = Image.fromarray(img)
-            if img_pil.mode != 'L':
-                img_pil = img_pil.convert('L')
+            #if img_pil.mode != 'L':
+            #    img_pil = img_pil.convert('L')
 
             img_pil.save(os.path.join(save_dir, f"IMG_{count:04d}.png"))
         
