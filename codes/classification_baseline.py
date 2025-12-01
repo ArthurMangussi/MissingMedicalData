@@ -16,7 +16,7 @@ import pandas as pd
 import numpy as np
 
 from torchvision import models, transforms
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 import torch.nn.functional as F  # Necessário para Softmax/Sigmoid
 
 
@@ -207,6 +207,7 @@ if __name__ == "__main__":
                 transforms.Resize(256),
                 transforms.CenterCrop(224),
                 transforms.Grayscale(num_output_channels=3),
+                transforms.GaussianBlur(kernel_size=3),
                 transforms.ToTensor(),
                 # Normalização padrão do ImageNet
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
@@ -218,8 +219,22 @@ if __name__ == "__main__":
         val_dataset = CustomImageDataset(x_val, y_val, transform=vgg_transforms)
         test_dataset = CustomImageDataset(x_test, y_test, transform=vgg_transforms)
 
+        class_sample_count = np.array([sum(y_train == t) for t in np.unique(y_train)])
+
+        # Peso inversamente proporcional à frequência da classe
+        weight = 1. / class_sample_count
+
+        # Cria vetor de pesos por amostra
+        samples_weight = np.array([weight[t] for t in y_train])
+
+        samples_weight = torch.from_numpy(samples_weight).double()
+
+        sampler = WeightedRandomSampler(weights=samples_weight,
+                                        num_samples=len(samples_weight),
+                                        replacement=True)
+
         # Crie os DataLoaders para iteração
-        train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+        train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, sampler=sampler)
         val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
         test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
@@ -229,8 +244,8 @@ if __name__ == "__main__":
         model_vgg.parameters(), 
         lr=1e-5, 
         weight_decay=1e-4
-    )
-
+    )  
+        
         train_model(
             model=model_vgg,
             train_loader=train_loader,
