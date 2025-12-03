@@ -14,7 +14,7 @@ class VAEWL(BaseEstimator, TransformerMixin):
         _vae_wl_model (VariationalAutoEncoder): Variational Autoencoder model.
     """
 
-    _PRE_IMPUTATION_CONSTANT = -np.inf
+    _PRE_IMPUTATION_CONSTANT = -1.0
     """
     Constant value used to pre-impute the missing values (`float`).
     """

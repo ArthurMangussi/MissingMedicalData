@@ -142,11 +142,16 @@ def evaluate_model(model, test_loader, device, num_classes=2):
 if __name__ == "__main__":
 
     # Baseline Original Images
-    data = Datasets("inbreast")
-    inbreast_images, labels_names, img_ids = data.load_data()
+    data_name = "mias"
+    data = Datasets(data_name)
+    mamo_images, labels_names, img_ids = data.load_data()
 
     image_ids = np.array(img_ids)
-    labels = np.array([labels_names[i] for i in image_ids])
+    if data_name== "inbreast":
+        labels = np.array([labels_names[i] for i in image_ids]) 
+    else:
+        labels = np.array(list(labels_names.values()))
+
 
     _logger = MeLogger()
     ut = Utilities()
@@ -157,10 +162,10 @@ if __name__ == "__main__":
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
 
-    for fold, (train_val_idx, test_idx) in enumerate(skf.split(inbreast_images, labels)):
+    for fold, (train_val_idx, test_idx) in enumerate(skf.split(mamo_images, labels)):
         _logger.info(f"\n[Fold {fold + 1}/5]")
 
-        x_train_val, x_test = inbreast_images[train_val_idx], inbreast_images[test_idx]
+        x_train_val, x_test = mamo_images[train_val_idx], mamo_images[test_idx]
         y_train_val, y_test = labels[train_val_idx], labels[test_idx]
 
         # Divide treino e validação internamente (ex: 20% para validação)
@@ -270,4 +275,4 @@ if __name__ == "__main__":
 
     results = pd.DataFrame({"ACC": results_accuracy, "F1": results_f1, "AUC_ROC":results_roc})
 
-    results.to_csv(f"./results/baseline_results.csv")
+    results.to_csv(f"./results/{data_name}_baseline_results.csv")

@@ -1,11 +1,3 @@
-###########################  Preprocessing of INbreast dataset ###########################
-## This script reads the DICOM files from the dataset and saves the final version of    ##
-## the images into a png format for latter use.                                         ##
-## The dataset is publicly available at :                                               ##
-## http://medicalresearch.inescporto.pt/breastresearch/index.php/Get_INbreast_Database  ##
-##########################################################################################
-
-
 from PIL import Image
 import pydicom
 import glob
@@ -35,18 +27,15 @@ def resize_with_pad(img, desired_size=256, pad_value=-1):
     return new_img
 
 # Setting the dataset directory
-thisdir = "/home/gpu-10-2025/Área de trabalho/Datasets/INBreast/DICOM"
+thisdir = "/home/gpu-10-2025/Área de trabalho/Datasets/MIAS/all-mias"
 
 images = []; labels = []
 tt = 0
 
-for img_path in sorted(glob.glob(thisdir + "/*.dcm")):
-    dir1 = img_path.split("/")
-    dir2 = dir1[-1]
-    dir3 = dir2[:-4]
-
-    ds = pydicom.dcmread(img_path)
-    image = ds.pixel_array.astype(np.float32)
+for img_path in sorted(glob.glob(thisdir + "/*.pgm")):
+    
+    ds = Image.open(img_path)
+    image = np.array(ds).astype(np.float32)
 
     # --- 1) Segmentação simples (como no seu código)
     ret, thresh1 = cv2.threshold(image, 20, 255, cv2.THRESH_BINARY)
@@ -83,6 +72,6 @@ for img_path in sorted(glob.glob(thisdir + "/*.dcm")):
     
     tt = tt +1
     if(tt%100 == 0):
-        print('Saving image: {} of 410'.format(tt))
+        print('Saving image: {} of 322'.format(tt))
     img = Image.fromarray(np.uint8(breast_norm*255))
-    img.save('/home/gpu-10-2025/Área de trabalho/Datasets/INBreast/PNG-TESTE/' + dir3 + '.png')
+    img.save('/home/gpu-10-2025/Área de trabalho/Datasets/MIAS/PNG/' + img_path[58:-4] + '.png')
