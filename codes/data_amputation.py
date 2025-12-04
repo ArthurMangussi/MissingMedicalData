@@ -28,7 +28,7 @@ class ImageDataAmputation:
         x_data = x_data.astype('float32') / 255
 
         number_channels = x_data.shape[3]
-        foreground_mask_2d = np.any(x_data != 0, axis=-1)
+        foreground_mask_2d = np.any(x_data >= 0.01, axis=-1)
 
         missing_mask_2d = np.stack(
             (np.random.choice([0, 1], size=(x_data.shape[0], x_data.shape[1], x_data.shape[2]),
@@ -60,7 +60,7 @@ class ImageDataAmputation:
     
         x_data = x_data.astype('float32') / 255
         number_channels = x_data.shape[3]
-        foreground_mask_2d = np.any(x_data != 0, axis=-1)
+        foreground_mask_2d = np.any(x_data >= 0.01, axis=-1)
 
         # Calcula a média dos canais (caso tenha mais de 1)
         grayscale = x_data.mean(axis=-1)  # Shape: (N, H, W)

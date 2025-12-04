@@ -11,14 +11,20 @@ class Utilities:
                    fold:int, 
                    model_impt:str,
                    labels_names:dict,
-                   image_ids:list):
+                   image_ids:list,
+                   dataset:str):
         """
         Method to save the array as an image.
         """
-        save_dir = f"./new_results/{model_impt}/imputed_images/fold{fold}_{mechanism}_{missing_rate}"
+        save_dir = f"./new_results/{dataset}/{model_impt}/imputed_images/fold{fold}_{mechanism}_{missing_rate}"
         os.makedirs(save_dir, exist_ok=True)
         
-        labels = np.array([{str(i):labels_names[i]} for i in image_ids])
+        try:
+            labels = np.array([{str(i):labels_names[i]} for i in image_ids])
+        except KeyError:
+            image_ids = [i[:-4]for i in image_ids]
+            labels = np.array([{str(i):labels_names[i]} for i in image_ids])
+
         
         for count, image in enumerate(images):
             img = np.squeeze(image)

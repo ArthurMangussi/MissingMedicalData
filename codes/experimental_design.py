@@ -7,6 +7,7 @@ sys.path.append("./")
 import gc
 
 import numpy as np
+import os
 import pandas as pd
 import tensorflow as tf
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
@@ -25,14 +26,21 @@ def run_experimental_design(model_impt:str,
                             images: np.ndarray,
                             labels_names:dict, 
                             image_ids:list):
+    os.makedirs(f"./results/{model_impt}", exist_ok=True)
     _logger = MeLogger()
     ut = Utilities()
     results_mse = {}
     results_psnr = {}
     results_ssim = {}
 
+
     image_ids = np.array(image_ids)
-    labels = np.array([labels_names[i] for i in image_ids])
+
+    if name== "inbreast":
+        
+        labels = np.array([labels_names[i] for i in image_ids]) 
+    else:
+        labels = np.array(list(labels_names.values()))
 
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
     
@@ -49,13 +57,18 @@ def run_experimental_design(model_impt:str,
     )
 
         amputation = ImageDataAmputation(missing_rate=missing_rate)
-        x_train, x_train_md, missing_mask_train = amputation.generate_random_squares_mask(x_train,
-                                                                                          num_squares=1,
-                                                                                          square_size=40)
-        x_val, x_val_md, _ = amputation.generate_random_squares_mask(x_val, num_squares=1,
-                                                                                          square_size=40)
-        x_test, x_test_md, missing_mask_test = amputation.generate_random_squares_mask(x_test, num_squares=1,
-                                                                                          square_size=40)
+        
+        if md_mechanism == "MCAR":
+            x_train, x_train_md, missing_mask_train = amputation.generate_missing_mask_mcar(x_train)
+            x_val, x_val_md, _ = amputation.generate_missing_mask_mcar(x_val)
+            x_test, x_test_md, missing_mask_test = amputation.generate_missing_mask_mcar(x_test)
+        elif md_mechanism == "MNAR":
+            x_train, x_train_md, missing_mask_train = amputation.generate_missing_mask_mnar(x_train)
+            x_val, x_val_md, _ = amputation.generate_missing_mask_mnar(x_val)
+            x_test, x_test_md, missing_mask_test = amputation.generate_missing_mask_mnar(x_test)
+        else:
+            x_test, x_test_md, missing_mask_test = amputation.generate_random_squares_mask(x_test)
+
 
         model = ModelsImputation()
         imputer = model.choose_model(model=model_impt, 
@@ -73,10 +86,11 @@ def run_experimental_design(model_impt:str,
                                         missing_mask_test_np=missing_mask_test,
                                         missing_rate=missing_rate)
         
+        elif model_impt == "mc":
+            x_test_imputed = imputer.transform(x_test_md, missing_mask_test)
         else:
             x_test_imputed = imputer.transform(x_test_md)
           
-
         ## Save the reconstructed image
         ut.save_image(mechanism=md_mechanism,
                     missing_rate=missing_rate,
@@ -84,7 +98,8 @@ def run_experimental_design(model_impt:str,
                     fold=fold,
                     model_impt=model_impt,
                     labels_names= labels_names, 
-                    image_ids = img_test_idx)
+                    image_ids = img_test_idx,
+                    dataset=name)
 
         ## Measure the imputation performance
         missing_mask_test_flat = missing_mask_test.astype(bool).flatten()
@@ -111,19 +126,26 @@ def run_experimental_design(model_impt:str,
     results = pd.DataFrame({"MSE":results_mse,
                         "PSNR":results_psnr,
                         "SSIM": results_ssim})
-    results.to_csv(f"./new_results/{model_impt}/{model_impt}_{md_mechanism}_{missing_rate}_results.csv")
+    results.to_csv(f"./results/{model_impt}/{name}_{model_impt}_{md_mechanism}_{missing_rate}_results.csv")
 
 if __name__ == "__main__":
-    MD_MECHANISM = "Hole"
-    model_impt = "vaewl"
-
-    # Carregar as imagens
-    data = Datasets('inbreast')
-    inbreast_images, y_mapped, image_ids = data.load_data()
     
-    #run_experimental_design(model_impt,0.05,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
-    #run_experimental_design(model_impt,0.10,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
-    #run_experimental_design(model_impt,0.20,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
-    #run_experimental_design(model_impt,0.30,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
-    #run_experimental_design(model_impt,0.40,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
-    run_experimental_design(model_impt,0.50,MD_MECHANISM,inbreast_images, y_mapped, image_ids)
+    dataset_names = ["vindr-reduzido", "mias", "inbreast"] 
+
+    for name in dataset_names:
+        # Carregar as imagens
+        data = Datasets(name)
+        inbreast_images, y_mapped, image_ids = data.load_data()
+        
+        
+        algorithms = ["mc","knn", "mice", "mae-vit", "mae-vit-gan"]
+        MD_MECHANISM = ["MCAR", "MNAR"]
+
+        for md_mechanism in MD_MECHANISM:
+            for model_impt in algorithms:
+                run_experimental_design(model_impt,0.05,md_mechanism,inbreast_images, y_mapped, image_ids)
+                run_experimental_design(model_impt,0.10,md_mechanism,inbreast_images, y_mapped, image_ids)
+                run_experimental_design(model_impt,0.20,md_mechanism,inbreast_images, y_mapped, image_ids)
+                run_experimental_design(model_impt,0.30,md_mechanism,inbreast_images, y_mapped, image_ids)
+                run_experimental_design(model_impt,0.40,md_mechanism,inbreast_images, y_mapped, image_ids)
+                run_experimental_design(model_impt,0.50,md_mechanism,inbreast_images, y_mapped, image_ids)

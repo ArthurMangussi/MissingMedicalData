@@ -38,7 +38,7 @@ class Datasets:
                 raise ValueError(f"Erro ao ler a imagem: {f}")
 
             # Redimensiona
-            imagem = cv2.resize(imagem, (256, 256))
+            imagem = cv2.resize(imagem, (224, 224))
             images.append(imagem)
 
             # Pega label da imagem no arquivo csv original
@@ -72,7 +72,7 @@ class Datasets:
                 raise ValueError(f"Erro ao ler a imagem: {f}")
 
             # Redimensiona
-            imagem = cv2.resize(imagem, (256, 256))
+            imagem = cv2.resize(imagem, (224, 224))
             images.append(imagem)
 
             # Pega label da imagem no arquivo csv original
@@ -103,7 +103,7 @@ class Datasets:
                 raise ValueError(f"Erro ao ler a imagem: {f}")
 
             # Redimensiona
-            imagem = cv2.resize(imagem, (256, 256))
+            imagem = cv2.resize(imagem, (224, 224))
             images.append(imagem)
             complete_name = f.split("_")
             filenames.append(
