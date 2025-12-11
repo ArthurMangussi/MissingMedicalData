@@ -63,13 +63,13 @@ class ModelsImputation:
         vae_wl_config.dropout = [0.2, 0.2]
         vae_wl_config.latent_dimension = 16
         vae_wl_config.batch_size = 16
-        vae_wl_config.learning_rate = 0.0001
+        vae_wl_config.learning_rate = 0.0005
         vae_wl_config.activation = "relu"
         vae_wl_config.output_activation = "sigmoid"
         vae_wl_config.loss = tf.keras.losses.binary_crossentropy
         vae_wl_config.input_shape = x_train.shape[1:]
-        vae_wl_config.missing_values_weight = 5
-        vae_wl_config.kullback_leibler_weight = 0.1
+        vae_wl_config.missing_values_weight = 100
+        vae_wl_config.kullback_leibler_weight = 0.01
 
         vae_wl_model = VAEWL(vae_wl_config)
         vaewl = vae_wl_model.fit(x_train_md, x_train, X_val=x_val_md, y_val=x_val)
@@ -87,7 +87,12 @@ class ModelsImputation:
         print(msg)
         return model
         
-
+    # ------------------------------------------------------------------------
+    @staticmethod
+    def model_dip():
+        return 
+    
+    
     # ------------------------------------------------------------------------
     @staticmethod
     def model_knn():
@@ -187,6 +192,9 @@ class ModelsImputation:
                 self._logger.info("[MAE-ViT] Importing...")
                 model_pth = "/home/gpu-10-2025/Área de trabalho/Modelos/mae_visualize_vit_large_ganloss.pth"
                 return ModelsImputation.model_mae_vit(model_pth)
+            
+            case "dip":
+                return ModelsImputation.model_dip()
 
 
 class CNN:

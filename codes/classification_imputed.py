@@ -17,14 +17,15 @@ import torch.optim as optim
 from codes.classification_baseline import NUM_CLASSES, device, BATCH_SIZE, train_model, evaluate_model
 
 
-def run_pipeline(MODEL_IMPT, MD_MECHANISM, MISSING_RATE):
+def run_pipeline(MODEL_IMPT, MD_MECHANISM, MISSING_RATE, NAME):
     _logger = MeLogger()
     _logger.info(f"{MODEL_IMPT} no {MD_MECHANISM} com {MISSING_RATE*100}%")
     
-    data = Datasets('inbreast')
+    data = Datasets(NAME)
     inbreast_images, y = data._load_inbreast_images_imputed(md_mechanism=MD_MECHANISM,
                                                             model_impt=MODEL_IMPT,
-                                                            missing_rate=MISSING_RATE)    
+                                                            missing_rate=MISSING_RATE,
+                                                            dataset_name=NAME)    
     results_accuracy = {}
     results_f1 = {}
     results_roc = {}
@@ -135,51 +136,52 @@ def run_pipeline(MODEL_IMPT, MD_MECHANISM, MISSING_RATE):
         results_roc[f"fold{fold}"] = round(roc_auc, 4)
 
     results = pd.DataFrame({"ACC": results_accuracy, "F1": results_f1, "AUC_ROC":results_roc})
-    results.to_csv(f"./new_results/{MD_MECHANISM}/{MODEL_IMPT}_{MISSING_RATE}_results.csv")
+    results.to_csv(f"./new_results/{MD_MECHANISM}/{NAME}_{MODEL_IMPT}_{MISSING_RATE}_results.csv")
 
 if __name__ == "__main__":
     
-    MD_MECHANISM = "MCAR"
+    for MD_MECHANISM in ["MCAR"]:
+        for dataset_name in ["vindr-reduzido"]:
 
-    run_pipeline("knn",MD_MECHANISM, 0.05)
-    run_pipeline("knn",MD_MECHANISM, 0.10)
-    run_pipeline("knn",MD_MECHANISM, 0.20)
-    run_pipeline("knn",MD_MECHANISM, 0.30)
-    run_pipeline("knn",MD_MECHANISM, 0.40)
-    run_pipeline("knn",MD_MECHANISM, 0.50)
+            run_pipeline("knn",MD_MECHANISM, 0.05, dataset_name)
+            run_pipeline("knn",MD_MECHANISM, 0.10, dataset_name)
+            run_pipeline("knn",MD_MECHANISM, 0.20, dataset_name)
+            run_pipeline("knn",MD_MECHANISM, 0.30, dataset_name)
+            run_pipeline("knn",MD_MECHANISM, 0.40, dataset_name)
+            run_pipeline("knn",MD_MECHANISM, 0.50, dataset_name)
 
-    run_pipeline("mc",MD_MECHANISM, 0.05)
-    run_pipeline("mc",MD_MECHANISM, 0.10)
-    run_pipeline("mc",MD_MECHANISM, 0.20)
-    run_pipeline("mc",MD_MECHANISM, 0.30)
-    run_pipeline("mc",MD_MECHANISM, 0.40)
-    run_pipeline("mc",MD_MECHANISM, 0.50)
+            run_pipeline("mc",MD_MECHANISM, 0.05, dataset_name)
+            run_pipeline("mc",MD_MECHANISM, 0.10, dataset_name)
+            run_pipeline("mc",MD_MECHANISM, 0.20, dataset_name)
+            run_pipeline("mc",MD_MECHANISM, 0.30, dataset_name)
+            run_pipeline("mc",MD_MECHANISM, 0.40, dataset_name)
+            run_pipeline("mc",MD_MECHANISM, 0.50, dataset_name)
 
-    run_pipeline("mice",MD_MECHANISM, 0.05)
-    run_pipeline("mice",MD_MECHANISM, 0.10)
-    run_pipeline("mice",MD_MECHANISM, 0.20)
-    run_pipeline("mice",MD_MECHANISM, 0.30)
-    run_pipeline("mice",MD_MECHANISM, 0.40)
-    run_pipeline("mice",MD_MECHANISM, 0.50)
+            run_pipeline("mice",MD_MECHANISM, 0.05, dataset_name)
+            run_pipeline("mice",MD_MECHANISM, 0.10, dataset_name)
+            run_pipeline("mice",MD_MECHANISM, 0.20, dataset_name)
+            run_pipeline("mice",MD_MECHANISM, 0.30, dataset_name)
+            run_pipeline("mice",MD_MECHANISM, 0.40, dataset_name)
+            run_pipeline("mice",MD_MECHANISM, 0.50, dataset_name)
 
-    run_pipeline("vaewl",MD_MECHANISM, 0.05)
-    run_pipeline("vaewl",MD_MECHANISM, 0.10)
-    run_pipeline("vaewl",MD_MECHANISM, 0.20)
-    run_pipeline("vaewl",MD_MECHANISM, 0.30)
-    run_pipeline("vaewl",MD_MECHANISM, 0.40)
-    run_pipeline("vaewl",MD_MECHANISM, 0.50)
+            run_pipeline("vaewl",MD_MECHANISM, 0.05, dataset_name)
+            run_pipeline("vaewl",MD_MECHANISM, 0.10, dataset_name)
+            run_pipeline("vaewl",MD_MECHANISM, 0.20, dataset_name)
+            run_pipeline("vaewl",MD_MECHANISM, 0.30, dataset_name)
+            run_pipeline("vaewl",MD_MECHANISM, 0.40, dataset_name)
+            run_pipeline("vaewl",MD_MECHANISM, 0.50, dataset_name)
 
-    run_pipeline("mae-vit",MD_MECHANISM, 0.05)
-    run_pipeline("mae-vit",MD_MECHANISM, 0.10)
-    run_pipeline("mae-vit",MD_MECHANISM, 0.20)
-    run_pipeline("mae-vit",MD_MECHANISM, 0.30)
-    run_pipeline("mae-vit",MD_MECHANISM, 0.40)
-    run_pipeline("mae-vit",MD_MECHANISM, 0.50)
+            run_pipeline("mae-vit",MD_MECHANISM, 0.05, dataset_name)
+            run_pipeline("mae-vit",MD_MECHANISM, 0.10, dataset_name)
+            run_pipeline("mae-vit",MD_MECHANISM, 0.20, dataset_name)
+            run_pipeline("mae-vit",MD_MECHANISM, 0.30, dataset_name)
+            run_pipeline("mae-vit",MD_MECHANISM, 0.40, dataset_name)
+            run_pipeline("mae-vit",MD_MECHANISM, 0.50, dataset_name)
 
-    run_pipeline("mae-vit-gan",MD_MECHANISM, 0.05)
-    run_pipeline("mae-vit-gan",MD_MECHANISM, 0.10)
-    run_pipeline("mae-vit-gan",MD_MECHANISM, 0.20)
-    run_pipeline("mae-vit-gan",MD_MECHANISM, 0.30)
-    run_pipeline("mae-vit-gan",MD_MECHANISM, 0.40)
-    run_pipeline("mae-vit-gan",MD_MECHANISM, 0.50)
-    
+            run_pipeline("mae-vit-gan",MD_MECHANISM, 0.05, dataset_name)
+            run_pipeline("mae-vit-gan",MD_MECHANISM, 0.10, dataset_name)
+            run_pipeline("mae-vit-gan",MD_MECHANISM, 0.20, dataset_name)
+            run_pipeline("mae-vit-gan",MD_MECHANISM, 0.30, dataset_name)
+            run_pipeline("mae-vit-gan",MD_MECHANISM, 0.40, dataset_name)
+            run_pipeline("mae-vit-gan",MD_MECHANISM, 0.50, dataset_name)
+            

@@ -85,7 +85,7 @@ class ImageDataAmputation:
         return x_data, x_data_md, missing_mask
 
 
-    def generate_random_squares_mask(self,x_data: np.ndarray, num_squares: int = 4, square_size: int = 5) -> np.ndarray:
+    def generate_random_squares_mask(self,x_data: np.ndarray, square_size: int = 5) -> np.ndarray:
         """
         Gera uma máscara binária 2D com 'num_squares' quadrados de 'square_size' x 'square_size'.
         Os quadrados são posicionados aleatoriamente APENAS em pixels não-zero da imagem.
@@ -102,43 +102,27 @@ class ImageDataAmputation:
         if len(x_data.shape) == 3:
             x_data = np.expand_dims(x_data, axis=-1)
 
-        N, H, W, C = x_data.shape
+        x_data = x_data.astype('float32') / 255
+        
+        N, H, W, C = x_data.shape 
         
         # 1. Inicializar a lista para armazenar as máscaras 2D de cada imagem
         all_missing_masks_2d = []
 
         # 2. Iterar sobre cada imagem no batch
         for i in range(N):
-            # A. Fatiar a imagem atual (2D, considerando apenas o primeiro canal para simplicidade)
-            # Assumindo que o foreground é o mesmo em todos os canais
-            image_2d = x_data[i, :, :, 0]
-            
-            # B. Identificar as Coordenadas Válidas DENTRO DESTA IMAGEM 2D
-            # np.where retorna apenas (H, W)
-            valid_y, valid_x = np.where(image_2d > 0)
-            valid_indices = np.arange(len(valid_y))
             
             # C. Inicializar a máscara 2D para esta imagem
             mask_2d = np.zeros((H, W), dtype=np.uint8)
 
-            # D. Iterar para gerar cada quadrado
-            for _ in range(num_squares):
-                if len(valid_indices) == 0:
-                    break
-                    
-                rand_idx = np.random.choice(valid_indices)
-                center_y = valid_y[rand_idx]
-                center_x = valid_x[rand_idx]
-                
-                # Cálculo dos limites do quadrado (H, W)
-                start_y = max(0, center_y)
-                end_y = min(H, center_y + square_size)
-                start_x = max(0, center_x)
-                end_x = min(W, center_x + square_size)
-
-                # E. Aplicar o quadrado NA MÁSCARA 2D ATUAL
-                mask_2d[start_y:end_y, start_x:end_x] = 1
+            start_x = (W - square_size) // 2
+            end_x = start_x + square_size
+            start_y = (H - square_size) // 2
+            end_y = start_y + square_size
             
+            # E. Aplicar o quadrado NA MÁSCARA 2D ATUAL
+            mask_2d[start_y:end_y, start_x:end_x] = 1
+        
             # Adicionar a máscara 2D gerada à lista
             all_missing_masks_2d.append(mask_2d)
 

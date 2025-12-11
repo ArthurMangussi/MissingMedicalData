@@ -120,14 +120,14 @@ class Datasets:
 
     @staticmethod
     def _load_inbreast_images_imputed(
-        md_mechanism: str, model_impt: str, missing_rate: float
+        md_mechanism: str, model_impt: str, missing_rate: float, dataset_name:str
     ):
         """
         Method to load the INBreast dataset after the imputation
         process.
 
         """
-        data_dir = f"/home/gpu-10-2025/Área de trabalho/MissingMedicalData/new_results/{model_impt}/imputed_images/"
+        data_dir = f"/home/gpu-10-2025/Área de trabalho/MissingMedicalData/new_results/{dataset_name}/{model_impt}/imputed_images/"
 
         fold0, fold1, fold2, fold3, fold4, labels = [], [], [], [], [], []
         for fold in range(5):
