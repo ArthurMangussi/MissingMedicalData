@@ -30,8 +30,17 @@ def run_pipeline(MODEL_IMPT, MD_MECHANISM, MISSING_RATE, NAME):
     results_f1 = {}
     results_roc = {}
 
+    if dataset_name == "mias":
+            fold_sizes = [65, 65, 64, 64, 64]
+            split_indices = np.cumsum(fold_sizes)
+            split_indices = split_indices[:-1]
+            inbreast_images = np.split(inbreast_images, split_indices, axis=0)
+            y = np.split(y,split_indices, axis=0)
+
+    
     for fold in range(5):
         _logger.info(f"\n[Fold {fold + 1}/5]")
+        
         # Separar dados de teste (1 paciente)
         X_test = inbreast_images[fold]    # shape: (82, 256, 256)
         y_test = y[fold]                  # shape: (82,)
@@ -140,8 +149,8 @@ def run_pipeline(MODEL_IMPT, MD_MECHANISM, MISSING_RATE, NAME):
 
 if __name__ == "__main__":
     
-    for MD_MECHANISM in ["MCAR"]:
-        for dataset_name in ["vindr-reduzido"]:
+    for MD_MECHANISM in ["MCAR", "MNAR"]:
+        for dataset_name in ["mias"]:
 
             run_pipeline("knn",MD_MECHANISM, 0.05, dataset_name)
             run_pipeline("knn",MD_MECHANISM, 0.10, dataset_name)

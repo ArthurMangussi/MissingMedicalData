@@ -19,7 +19,7 @@ from algorithms.vaewl import VAEWL
 from utils.MeLogSingle import MeLogger
 
 from algorithms.wrappers import KNNWrapper, MICEWrapper, MCWrapper
-
+import algorithms.dip_code as dip
 
 import numpy as np
 from tensorflow import keras
@@ -90,6 +90,7 @@ class ModelsImputation:
     # ------------------------------------------------------------------------
     @staticmethod
     def model_dip():
+        dip.training_cycle()
         return 
     
     
