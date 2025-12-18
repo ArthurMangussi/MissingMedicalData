@@ -45,4 +45,3 @@ plt.savefig("inpainting_results.png", dpi=300,
     bbox_inches="tight",
     pad_inches=0,
     transparent=True)
-plt.show()
