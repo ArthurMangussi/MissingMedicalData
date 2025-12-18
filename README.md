@@ -1,8 +1,14 @@
 # Robustness Evaluation of Image Inpainting Techniques
 
-This repository contains the codebase for the paper:
+This repository provides the codebase for evaluating six image inpainting methods—**Median, k-Nearest Neighbors (kNN), Matrix Completion, Variational Autoencoder with Weighted Loss (VAE-WL), Masked Autoencoder Vision Transformer (MAE-ViT), and Masked Autoencoder Vision Transformer with GAN Loss (MAE-ViT+GAN)**—across three mammography datasets: INBreast, MIAS, and a stratified 1,000-image subset of VinDr-Mammo.
 
-**"Towards Data-Centric AI in Mammography: Robustness Evaluation of Image Inpainting Techniques"**
+An example of inpainted images produced by the evaluated methods is shown below:
+
+<p align="center">
+  <img src="paper/inpainting_results.png" width="600" title="Resultados de Inpainting">
+</p>
+
+The results reported in this repository are described in a paper submitted to the 28th International Conference on Pattern Recognition (ICPR 2026), to be held in Lyon, France. Additionally, the supplementary material can be viewed [here](paper)
 
 ## Getting Started
 
