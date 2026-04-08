@@ -13,7 +13,7 @@ import tensorflow as tf
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 from sklearn.metrics import mean_absolute_error
 from sklearn.model_selection import StratifiedKFold, train_test_split
-
+from time import perf_counter
 from codes.data_amputation import ImageDataAmputation
 from utils.MeLogSingle import MeLogger
 from utils.MyDataset import Datasets
@@ -139,22 +139,50 @@ if __name__ == "__main__":
     # inbreast_images, y_mapped, image_ids = data.load_data()
     # run_experimental_design("vaewl",0.05,"SQUARE",inbreast_images, y_mapped, image_ids)
     
-    dataset_names = ["vindr-reduzido", "mias", "inbreast"] 
-
+    
+    dataset_names = ["vindr-reduzido"] 
+    tempo_total = {}
     for name in dataset_names:
         # Carregar as imagens
         data = Datasets(name)
         inbreast_images, y_mapped, image_ids = data.load_data()
         
         
-        algorithms = ["mc","knn", "mice", "mae-vit", "mae-vit-gan"]
-        MD_MECHANISM = ["SQUARE"]
+        algorithms = ["knn", "mae-vit-gan"]
+        MD_MECHANISM = ["MCAR"]
 
         for md_mechanism in MD_MECHANISM:
             for model_impt in algorithms:
+                init_time = perf_counter()
                 run_experimental_design(model_impt,0.05,md_mechanism,inbreast_images, y_mapped, image_ids)
-                # run_experimental_design(model_impt,0.10,md_mechanism,inbreast_images, y_mapped, image_ids)
-                # run_experimental_design(model_impt,0.20,md_mechanism,inbreast_images, y_mapped, image_ids)
-                # run_experimental_design(model_impt,0.30,md_mechanism,inbreast_images, y_mapped, image_ids)
-                # run_experimental_design(model_impt,0.40,md_mechanism,inbreast_images, y_mapped, image_ids)
-                # run_experimental_design(model_impt,0.50,md_mechanism,inbreast_images, y_mapped, image_ids)
+                end_time = perf_counter()
+                tempo_total[f"{model_impt}-5%"] = round(end_time-init_time, 2)
+                
+                init_time = perf_counter()
+                run_experimental_design(model_impt,0.10,md_mechanism,inbreast_images, y_mapped, image_ids)
+                end_time = perf_counter()
+                tempo_total[f"{model_impt}-10%"] = round(end_time-init_time, 2)
+                
+                init_time = perf_counter()
+                run_experimental_design(model_impt,0.20,md_mechanism,inbreast_images, y_mapped, image_ids)
+                end_time = perf_counter()
+                tempo_total[f"{model_impt}-20%"] = round(end_time-init_time, 2)
+                
+                init_time = perf_counter()
+                run_experimental_design(model_impt,0.30,md_mechanism,inbreast_images, y_mapped, image_ids)
+                end_time = perf_counter()
+                tempo_total[f"{model_impt}-30%"] = round(end_time-init_time, 2)
+                
+                init_time = perf_counter()
+                run_experimental_design(model_impt,0.40,md_mechanism,inbreast_images, y_mapped, image_ids)
+                end_time = perf_counter()
+                tempo_total[f"{model_impt}-40%"] = round(end_time-init_time, 2)
+                
+                init_time = perf_counter()
+                run_experimental_design(model_impt,0.50,md_mechanism,inbreast_images, y_mapped, image_ids)
+                end_time = perf_counter()
+                tempo_total[f"{model_impt}-50%"] = round(end_time-init_time, 2)
+
+    res_tempo = pd.DataFrame({"Tempo": tempo_total})
+    res_tempo.to_csv("tempo.csv", index=False)
+                
