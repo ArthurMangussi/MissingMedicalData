@@ -18,7 +18,7 @@ from algorithms.vae import ConfigVAE
 from algorithms.vaewl import VAEWL
 from utils.MeLogSingle import MeLogger
 
-from algorithms.wrappers import KNNWrapper, MICEWrapper, MCWrapper
+from algorithms.wrappers import KNNWrapper, MCWrapper
 import algorithms.dip_code as dip
 
 import numpy as np
@@ -287,7 +287,7 @@ class DiffusionInpainting:
 
     def __init__(
         self,
-        model_dir: str = "Likalto4/vindr_lesion-inpainting",
+        model_dir: str = "Likalto4/inpainting_vindr_massbs16",
         device: str = "cuda",
         torch_dtype=torch.float16,
     ):
@@ -617,18 +617,20 @@ class ModelsImputation:
         dip_model : DeepImagePrior
             Initialized DIP model ready for fitting
         """
-        return DeepImagePrior(
+        model =DeepImagePrior(
             device=device,
             num_iter=num_iter,
             learning_rate=learning_rate,
             input_depth=input_depth,
             num_channels=num_channels,
         )
+        model.fit(x_train=x_train, mask_train=mask_train)
+        return model
 
     # ------------------------------------------------------------------------
     @staticmethod
     def model_diffusion(
-        model_dir: str = "Likalto4/vindr_lesion-inpainting",
+        model_dir: str = "Likalto4/inpainting_vindr_massbs16",
         device: str = "cuda",
         torch_dtype=torch.float16,
     ):

@@ -94,14 +94,14 @@ def run_experimental_design(model_impt:str,
             x_test_imputed = imputer.transform(x_test_md)
           
         ## Save the reconstructed image
-        ut.save_image(mechanism=md_mechanism,
-                    missing_rate=missing_rate,
-                    images=x_test_imputed,
-                    fold=fold,
-                    model_impt=model_impt,
-                    labels_names= labels_names, 
-                    image_ids = img_test_idx,
-                    dataset=name)
+        #ut.save_image(mechanism=md_mechanism,
+        #            missing_rate=missing_rate,
+        #            images=x_test_imputed,
+        #            fold=fold,
+        #            model_impt=model_impt,
+        #            labels_names= labels_names, 
+        #            image_ids = img_test_idx,
+        #            dataset=name)
 
         ## Measure the imputation performance
         # Handle multi-channel images by averaging across channels
@@ -178,7 +178,7 @@ if __name__ == "__main__":
         inbreast_images, y_mapped, image_ids = data.load_data()
         
         
-        algorithms = ["knn"]
+        algorithms = ["diffusion"]
         MD_MECHANISMS = "MAR-Truncation"
         
         for model_impt in algorithms:
