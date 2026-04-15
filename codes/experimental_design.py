@@ -58,20 +58,9 @@ def run_experimental_design(model_impt:str,
 
         amputation = ImageDataAmputation(missing_rate=missing_rate)
         
-        if md_mechanism == "MCAR":
-            x_train, x_train_md, missing_mask_train = amputation.generate_missing_mask_mcar(x_train)
-            x_val, x_val_md, _ = amputation.generate_missing_mask_mcar(x_val)
-            x_test, x_test_md, missing_mask_test = amputation.generate_missing_mask_mcar(x_test)
-        elif md_mechanism == "MNAR":
-            x_train, x_train_md, missing_mask_train = amputation.generate_missing_mask_mnar(x_train)
-            x_val, x_val_md, _ = amputation.generate_missing_mask_mnar(x_val)
-            x_test, x_test_md, missing_mask_test = amputation.generate_missing_mask_mnar(x_test)
-        else:
-            x_train, x_train_md, missing_mask_train = amputation.generate_random_squares_mask(x_train, square_size=40)
-            x_val, x_val_md, _ = amputation.generate_random_squares_mask(x_val, square_size=40)
-            x_test, x_test_md, missing_mask_test = amputation.generate_random_squares_mask(x_test,
-                                                                                           
-                                                                                           square_size=40)
+        x_train, x_train_md, missing_mask_train = amputation.generate_mar_truncation(x_train)
+        x_val, x_val_md, _ = amputation.generate_mar_truncation(x_val)
+        x_test, x_test_md, missing_mask_test = amputation.generate_mar_truncation(x_test)
 
 
         model = ModelsImputation()
@@ -189,41 +178,15 @@ if __name__ == "__main__":
         inbreast_images, y_mapped, image_ids = data.load_data()
         
         
-        algorithms = ["knn", "mae-vit-gan"]
-        MD_MECHANISM = ["MCAR"]
-
-        for md_mechanism in MD_MECHANISM:
-            for model_impt in algorithms:
+        algorithms = ["knn"]
+        MD_MECHANISMS = "MAR-Truncation"
+        
+        for model_impt in algorithms:
                 init_time = perf_counter()
-                run_experimental_design(model_impt,0.05,md_mechanism,inbreast_images, y_mapped, image_ids)
+                run_experimental_design(model_impt,0.05,MD_MECHANISMS,inbreast_images, y_mapped, image_ids)
                 end_time = perf_counter()
-                tempo_total[f"{model_impt}-5%"] = round(end_time-init_time, 2)
+                tempo_total[f"{model_impt}-{MD_MECHANISMS}"] = round(end_time-init_time, 2)
                 
-                init_time = perf_counter()
-                run_experimental_design(model_impt,0.10,md_mechanism,inbreast_images, y_mapped, image_ids)
-                end_time = perf_counter()
-                tempo_total[f"{model_impt}-10%"] = round(end_time-init_time, 2)
-                
-                init_time = perf_counter()
-                run_experimental_design(model_impt,0.20,md_mechanism,inbreast_images, y_mapped, image_ids)
-                end_time = perf_counter()
-                tempo_total[f"{model_impt}-20%"] = round(end_time-init_time, 2)
-                
-                init_time = perf_counter()
-                run_experimental_design(model_impt,0.30,md_mechanism,inbreast_images, y_mapped, image_ids)
-                end_time = perf_counter()
-                tempo_total[f"{model_impt}-30%"] = round(end_time-init_time, 2)
-                
-                init_time = perf_counter()
-                run_experimental_design(model_impt,0.40,md_mechanism,inbreast_images, y_mapped, image_ids)
-                end_time = perf_counter()
-                tempo_total[f"{model_impt}-40%"] = round(end_time-init_time, 2)
-                
-                init_time = perf_counter()
-                run_experimental_design(model_impt,0.50,md_mechanism,inbreast_images, y_mapped, image_ids)
-                end_time = perf_counter()
-                tempo_total[f"{model_impt}-50%"] = round(end_time-init_time, 2)
-
     res_tempo = pd.DataFrame({"Tempo": tempo_total})
     res_tempo.to_csv("tempo.csv", index=False)
                 
