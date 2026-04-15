@@ -27,40 +27,21 @@ class Utilities:
 
         
         for count, image in enumerate(images):
+            # image shape here is (H, W) when images is (N, H, W)
             img = np.array(image, copy=True)
 
-            # Remove accidental batch dimension: (1, H, W, C) or (1, C, H, W)
-            if img.ndim == 4:
-                img = img[0]
-
-            # Normalize to [0, 255] uint8 before reshaping
+            # Normalize to [0, 255] uint8
             if img.max() <= 1.0:
                 img = (img * 255).astype(np.uint8)
             else:
                 img = img.astype(np.uint8)
 
-            if img.ndim == 3:
-                # Detect channel-first layout (C, H, W) when C is small (1 or 3)
-                # and clearly smaller than spatial dimensions
-                if img.shape[0] in (1, 3, 4) and img.shape[0] < img.shape[1]:
-                    img = img.transpose(1, 2, 0)  # (C, H, W) → (H, W, C)
+            # Explicit grayscale conversion — avoids PIL KeyError
+            # when ndim > 2 slips through (e.g. (H, W, 1) from some models)
+            if img.ndim > 2:
+                img = img.squeeze()
 
-                # Collapse single channel: (H, W, 1) → (H, W)
-                img = np.squeeze(img)
-
-            # Final conversion to PIL with explicit mode
-            if img.ndim == 2:
-                img_pil = Image.fromarray(img, mode="L")
-            elif img.ndim == 3 and img.shape[2] == 3:
-                img_pil = Image.fromarray(img, mode="RGB")
-            elif img.ndim == 3 and img.shape[2] == 4:
-                img_pil = Image.fromarray(img, mode="RGBA")
-            else:
-                raise ValueError(
-                    f"Unsupported image shape for saving: {img.shape}. "
-                    "Expected (H, W), (H, W, 3), or (H, W, 4)."
-                )
-
+            img_pil = Image.fromarray(img, mode="L")
             img_pil.save(os.path.join(save_dir, f"IMG_{count:04d}.png"))
         
         labels_df = pd.DataFrame(
