@@ -3,47 +3,55 @@ import numpy as np
 
 
 class KNNWrapper:
+    """
+    KNN-based imputation wrapper for multi-channel images.
+
+    Handles 2D grayscale and multi-channel images by flattening spatial dimensions
+    while preserving the original shape in the output.
+    """
 
     def __init__(self, n_neighbors: int):
+        """
+        Initialize KNN imputer.
+
+        Parameters
+        ----------
+        n_neighbors : int
+            Number of neighbors for KNN imputation
+        """
         self.imputer = KNN(n_neighbors)
 
     def transform(self, images_with_mv_test):
-        # Impute the data in each image
-        images = []
-        for k in range(images_with_mv_test.shape[0]):
-            test_image = np.reshape(
-                images_with_mv_test[k],
-                (images_with_mv_test.shape[1], images_with_mv_test.shape[2]),
-            )
-            imputed_image = self.imputer.fit_transform(test_image)
-            images.append(imputed_image)
+        """
+        Impute missing values in a batch of images.
 
-        return np.array(images)
+        Supports arbitrary input shapes: (N, H, W), (N, C, H, W), (N, H, W, C)
 
+        Parameters
+        ----------
+        images_with_mv_test : np.ndarray
+            Batch of images with missing values (NaN)
+            Shape: (N, H, W) or (N, C, H, W) or (N, H, W, C)
 
-class MICEWrapper:
+        Returns
+        -------
+        imputed_images : np.ndarray
+            Imputed images with same shape as input
+        """
+        # Store original shape to restore later
+        original_shape = images_with_mv_test.shape
+        batch_size = original_shape[0]
 
-    # TODO: Must be improved to avoid unused parameters... Maybe use tuples?
-    def __init__(self, max_iter: int, x_train: np.ndarray):
+        # Flatten all dimensions except batch: (N, ...) -> (N, -1)
+        images_flat = images_with_mv_test.reshape((batch_size, -1))
 
-        self.mice_impute = IterativeImputer(
-            max_iter=max_iter,
-            random_state=42,
-            verbose=1,
-            skip_complete=True,
-            initial_strategy="median",
-        )
-        train_images = x_train.reshape((x_train.shape[0], -1))
-        self.mice_impute.fit(X=train_images)
+        # Impute the flattened data
+        imputed_flat = self.imputer.fit_transform(images_flat)
 
-    def transform(self, images_with_mv_test):
+        # Restore original shape
+        imputed_images = imputed_flat.reshape(original_shape)
 
-        # Impute the data in each image
-        test_images = images_with_mv_test.reshape((images_with_mv_test.shape[0], -1))
-        imputed_image = self.mice_impute.transform(test_images)
-        imputed_image = imputed_image.reshape(images_with_mv_test.shape)
-
-        return np.array(imputed_image)
+        return np.array(imputed_images)
 
 
 class MCWrapper:

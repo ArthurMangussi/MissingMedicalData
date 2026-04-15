@@ -84,15 +84,24 @@ def run_experimental_design(model_impt:str,
                                     )
 
         if model_impt == "mae-vit" or model_impt == "mae-vit-gan":
-
+            # MAE-ViT expects incomplete image for inpainting
             x_test_imputed = model.mae_imputer_transform(model=imputer,
-                                        x_test_md_np=x_test,
+                                        x_test_md_np=x_test_md,  # Fixed: use x_test_md (incomplete)
                                         missing_mask_test_np=missing_mask_test,
                                         missing_rate=missing_rate)
-        
+
         elif model_impt == "mc":
             x_test_imputed = imputer.transform(x_test_md, missing_mask_test)
+
+        elif model_impt == "diffusion":
+            # Diffusion model - use incomplete image
+            x_test_imputed = model.diffusion_transform(model=imputer,
+                                                       x_test_md_np=x_test_md,
+                                                       missing_mask_test_np=missing_mask_test,
+                                                       prompt="medical image",
+                                                       num_inference_steps=20)
         else:
+            # DIP, KNN, MICE, etc. - use incomplete image
             x_test_imputed = imputer.transform(x_test_md)
           
         ## Save the reconstructed image
@@ -106,18 +115,50 @@ def run_experimental_design(model_impt:str,
                     dataset=name)
 
         ## Measure the imputation performance
-        missing_mask_test_flat = missing_mask_test.astype(bool).flatten()
+        # Handle multi-channel images by averaging across channels
+        missing_mask_test_binary = missing_mask_test.astype(bool)
 
-        mse = mean_absolute_error(x_test_imputed.flatten()[missing_mask_test_flat],
-                                    x_test.flatten()[missing_mask_test_flat])
-        psnr = peak_signal_noise_ratio(x_test_imputed.flatten()[missing_mask_test_flat],
-                                    x_test.flatten()[missing_mask_test_flat],
-                                    data_range=1.0)
-        ssim = structural_similarity(x_test_imputed.flatten()[missing_mask_test_flat],
-                                    x_test.flatten()[missing_mask_test_flat],
-                                    data_range=1.0)
+        # Extract only missing pixels from both images
+        x_imputed_missing = x_test_imputed[missing_mask_test_binary]
+        x_original_missing = x_test[missing_mask_test_binary]
+
+        # Compute MAE on missing pixels only
+        mae = mean_absolute_error(x_imputed_missing, x_original_missing)
+
+        # For PSNR/SSIM, compute per channel if multi-channel, then average
+        if len(x_test.shape) > 2 and x_test.shape[0] > 1:
+            # Multi-channel: compute per-channel metrics and average
+            psnr_values = []
+            ssim_values = []
+            for c in range(x_test.shape[0]):
+                psnr_c = peak_signal_noise_ratio(
+                    x_test_imputed[c, missing_mask_test_binary[c]],
+                    x_test[c, missing_mask_test_binary[c]],
+                    data_range=1.0
+                )
+                ssim_c = structural_similarity(
+                    x_test_imputed[c][missing_mask_test_binary[c].reshape(x_test[c].shape)],
+                    x_test[c][missing_mask_test_binary[c].reshape(x_test[c].shape)],
+                    data_range=1.0
+                )
+                psnr_values.append(psnr_c)
+                ssim_values.append(ssim_c)
+            psnr = np.mean(psnr_values)
+            ssim = np.mean(ssim_values)
+        else:
+            # Single channel or 2D image
+            psnr = peak_signal_noise_ratio(
+                x_imputed_missing,
+                x_original_missing,
+                data_range=1.0
+            )
+            ssim = structural_similarity(
+                x_test_imputed[missing_mask_test_binary],
+                x_test[missing_mask_test_binary],
+                data_range=1.0
+            )
         
-        results_mse[f"fold{fold}"] = round(mse, 4)
+        results_mse[f"fold{fold}"] = round(mae, 4)  # Stores MAE (Mean Absolute Error)
         results_psnr[f"fold{fold}"] = round(psnr, 4)
         results_ssim[f"fold{fold}"] = round(ssim, 4)
 
@@ -126,10 +167,10 @@ def run_experimental_design(model_impt:str,
         gc.collect()
 
 
-    # Resultados - MSE PSNR 
-    results = pd.DataFrame({"MSE":results_mse,
-                        "PSNR":results_psnr,
-                        "SSIM": results_ssim})
+    # Results - MAE, PSNR, SSIM metrics
+    results = pd.DataFrame({"MAE":results_mse,  # Mean Absolute Error on missing pixels
+                        "PSNR":results_psnr,    # Peak Signal-to-Noise Ratio
+                        "SSIM": results_ssim})  # Structural Similarity Index
     results.to_csv(f"./results/{model_impt}/{name}_{model_impt}_{md_mechanism}_{missing_rate}_results.csv")
 
 if __name__ == "__main__":
