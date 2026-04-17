@@ -780,8 +780,7 @@ class ModelsImputation:
         x_train: np.ndarray = None,
         x_train_md: np.ndarray = None,
         x_val_md: np.ndarray = None,
-        x_val: np.ndarray = None,
-        mask_train: np.ndarray = None,
+        x_val: np.ndarray = None
     ):
         match model:
 
@@ -797,9 +796,6 @@ class ModelsImputation:
                 self._logger.info("[KNN] Training...")
                 return ModelsImputation.model_knn()
 
-            case "mice":
-                self._logger.info("[MICE] Training...")
-                return ModelsImputation.model_mice(x_train=x_train)
 
             case "mc":
                 self._logger.info("[MC] Training...")

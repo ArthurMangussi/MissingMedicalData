@@ -42,19 +42,11 @@ class ImageDataAmputation:
         """
         original_shape = x_data.shape
 
-        # Handle 2D → 3D (add channel dimension if needed)
-        if len(x_data.shape) == 2:
-            x_data = np.expand_dims(x_data, axis=-1)
-
-        # Handle 3D → 4D (add batch dimension if missing)
-        if len(x_data.shape) == 3:
-            x_data = np.expand_dims(x_data, axis=0)
-
         # Normalize to [0, 1]
         x_data = x_data.astype("float32") / 255.0
 
         # Foreground mask: pixels with significant intensity
-        foreground_mask = np.any(x_data >= 0.01, axis=-1)
+        foreground_mask = np.any(x_data >= 0.0, axis=0)    
 
         return x_data, foreground_mask, original_shape
 
@@ -251,7 +243,6 @@ class ImageDataAmputation:
         ... )
         """
         x_data, foreground_mask, _ = self._normalize_and_prepare(x_data)
-        num_channels = x_data.shape[-1]
         batch, height, width = x_data.shape[0], x_data.shape[1], x_data.shape[2]
 
         missing_mask_2d = np.zeros((batch, height, width), dtype=np.float32)
@@ -263,13 +254,10 @@ class ImageDataAmputation:
 
         # Limit to foreground
         missing_mask_limited = missing_mask_2d * foreground_mask
-        missing_mask = np.stack(
-            (missing_mask_limited,) * num_channels, axis=-1
-        ).astype(np.float32)
 
-        x_data_md = self._apply_mask(x_data, missing_mask)
+        x_data_md = self._apply_mask(x_data,missing_mask_limited)
 
-        return x_data, x_data_md, missing_mask
+        return x_data, x_data_md, missing_mask_limited
 
     def generate_mar_truncation(
         self,
@@ -318,7 +306,6 @@ class ImageDataAmputation:
         ... )
         """
         x_data, foreground_mask, _ = self._normalize_and_prepare(x_data)
-        num_channels = x_data.shape[-1]
         batch, height, width = x_data.shape[0], x_data.shape[1], x_data.shape[2]
 
         missing_mask_2d = np.zeros((batch, height, width), dtype=np.float32)
@@ -338,13 +325,11 @@ class ImageDataAmputation:
 
         # Limit to foreground
         missing_mask_limited = missing_mask_2d * foreground_mask
-        missing_mask = np.stack(
-            (missing_mask_limited,) * num_channels, axis=-1
-        ).astype(np.float32)
 
-        x_data_md = self._apply_mask(x_data, missing_mask)
 
-        return x_data, x_data_md, missing_mask
+        x_data_md = self._apply_mask(x_data, missing_mask_limited)
+
+        return x_data, x_data_md, missing_mask_limited
 
     def generate_mar_compression_plate(
         self,

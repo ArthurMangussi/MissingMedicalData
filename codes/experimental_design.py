@@ -58,18 +58,17 @@ def run_experimental_design(model_impt:str,
 
         amputation = ImageDataAmputation(missing_rate=missing_rate)
         
-        x_train, x_train_md, missing_mask_train = amputation.generate_mar_truncation(x_train)
-        x_val, x_val_md, _ = amputation.generate_mar_truncation(x_val)
-        x_test, x_test_md, missing_mask_test = amputation.generate_mar_truncation(x_test)
+        x_train, x_train_md, _ = amputation.generate_mar_stripes(x_train)
+        x_val, x_val_md, _ = amputation.generate_mar_stripes(x_val)
+        x_test, x_test_md, missing_mask_test = amputation.generate_mar_stripes(x_test)
 
 
         model = ModelsImputation()
         imputer = model.choose_model(model=model_impt, 
                                     x_train=x_train,
-                                    x_train_md=x_train_md,
                                     x_val_md=x_val_md,
                                     x_val=x_val,
-                                    mask_train=missing_mask_train
+                                    x_train_md=x_train_md,
                                     )
 
         if model_impt == "mae-vit" or model_impt == "mae-vit-gan":
@@ -94,14 +93,14 @@ def run_experimental_design(model_impt:str,
             x_test_imputed = imputer.transform(x_test_md)
           
         ## Save the reconstructed image
-        #ut.save_image(mechanism=md_mechanism,
-        #            missing_rate=missing_rate,
-        #            images=x_test_imputed,
-        #            fold=fold,
-        #            model_impt=model_impt,
-        #            labels_names= labels_names, 
-        #            image_ids = img_test_idx,
-        #            dataset=name)
+        ut.save_image(mechanism=md_mechanism,
+                    missing_rate=missing_rate,
+                    images=x_test_imputed,
+                    fold=fold,
+                    model_impt=model_impt,
+                    labels_names= labels_names, 
+                    image_ids = img_test_idx,
+                    dataset=name)
 
         ## Measure the imputation performance
         # Handle multi-channel images by averaging across channels
@@ -178,7 +177,7 @@ if __name__ == "__main__":
         inbreast_images, y_mapped, image_ids = data.load_data()
         
         
-        algorithms = ["diffusion"]
+        algorithms = ["knn"]
         MD_MECHANISMS = "MAR-Truncation"
         
         for model_impt in algorithms:
