@@ -47,19 +47,19 @@ def run_experimental_design(model_impt:str,
         _logger.info(f"\n[Fold {fold + 1}/5]")
 
         x_train_val, x_test = images[train_val_idx], images[test_idx]
-        y_train_val, y_test = labels[train_val_idx], labels[test_idx]
+        y_train_val, _ = labels[train_val_idx], labels[test_idx]
 
         img_test_idx = image_ids[test_idx]
         # Divide treino e validação internamente (ex: 20% para validação)
-        x_train, x_val, y_train, y_val = train_test_split(
+        x_train, x_val, _, _ = train_test_split(
             x_train_val, y_train_val, test_size=0.2, random_state=fold
     )
 
         amputation = ImageDataAmputation()
         
-        x_train, x_train_md, _ = amputation.generate_mar_truncation(x_train)
-        x_val, x_val_md, _ = amputation.generate_mar_truncation(x_val)
-        x_test, x_test_md, missing_mask_test = amputation.generate_mar_truncation(x_test )
+        x_train, x_train_md, _ = amputation.generate_random_squares_mask(x_train)
+        x_val, x_val_md, _ = amputation.generate_random_squares_mask(x_val)
+        x_test, x_test_md, missing_mask_test = amputation.generate_random_squares_mask(x_test )
 
 
         model = ModelsImputation()
@@ -157,7 +157,7 @@ def run_experimental_design(model_impt:str,
     results = pd.DataFrame({"MAE":results_mse,  # Mean Absolute Error on missing pixels
                         "PSNR":results_psnr,    # Peak Signal-to-Noise Ratio
                         "SSIM": results_ssim})  # Structural Similarity Index
-    results.to_csv(f"./results/{model_impt}/{name}_{model_impt}_{md_mechanism}_{missing_rate}_results.csv")
+    results.to_csv(f"./results/{model_impt}/{name}_{model_impt}_{md_mechanism}_results.csv")
 
 if __name__ == "__main__":
     
@@ -174,7 +174,7 @@ if __name__ == "__main__":
         
         for model_impt in algorithms:
                 init_time = perf_counter()
-                run_experimental_design(model_impt,0.05,MD_MECHANISMS,inbreast_images, y_mapped, image_ids)
+                run_experimental_design(model_impt,MD_MECHANISMS,inbreast_images, y_mapped, image_ids)
                 end_time = perf_counter()
                 tempo_total[f"{model_impt}-{MD_MECHANISMS}"] = round(end_time-init_time, 2)
                 
