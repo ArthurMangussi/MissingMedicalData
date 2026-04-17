@@ -57,7 +57,7 @@ def run_experimental_design(model_impt:str,
 
         amputation = ImageDataAmputation()
         
-        x_train, x_train_md, _ = amputation.generate_random_squares_mask(x_train)
+        x_train, x_train_md, missing_mask_train = amputation.generate_random_squares_mask(x_train)
         x_val, x_val_md, _ = amputation.generate_random_squares_mask(x_val)
         x_test, x_test_md, missing_mask_test = amputation.generate_random_squares_mask(x_test )
 
@@ -68,6 +68,7 @@ def run_experimental_design(model_impt:str,
                                     x_val_md=x_val_md,
                                     x_val=x_val,
                                     x_train_md=x_train_md,
+                                    missing_mask=missing_mask_train
                                     )
 
         if model_impt == "mae-vit" or model_impt == "mae-vit-gan":
@@ -85,7 +86,7 @@ def run_experimental_design(model_impt:str,
             x_test_imputed = model.diffusion_transform(model=imputer,
                                                        x_test_md_np=x_test_md,
                                                        missing_mask_test_np=missing_mask_test,
-                                                       prompt="medical image",
+                                                       prompt="mammography medical image",
                                                        num_inference_steps=20)
         else:
             # DIP, KNN, MICE, etc. - use incomplete image
@@ -169,7 +170,7 @@ if __name__ == "__main__":
         inbreast_images, y_mapped, image_ids = data.load_data()
         
         
-        algorithms = ["knn"]
+        algorithms = ["vaewl"]
         MD_MECHANISMS = "MAR-Truncation"
         
         for model_impt in algorithms:
