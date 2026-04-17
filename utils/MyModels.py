@@ -142,6 +142,14 @@ class DeepImagePrior:
         if x_train.max() > 1.0:
             x_train = x_train.astype(np.float32) / 255.0
 
+        # Align mask spatial dims to image (center-crop if mask is larger)
+        tH, tW = x_train.shape[-2], x_train.shape[-1]
+        mH, mW = mask_train.shape[-2], mask_train.shape[-1]
+        if mH != tH or mW != tW:
+            dH = (mH - tH) // 2
+            dW = (mW - tW) // 2
+            mask_train = mask_train[..., dH:dH + tH, dW:dW + tW]
+
         # Prepare network and input
         num_channels = x_train.shape[0]
         spatial_size = x_train.shape[1:]

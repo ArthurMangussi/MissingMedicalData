@@ -403,14 +403,21 @@ def training_cycle(img_np,img_mask_np):
   figsize = 5
   reg_noise_std = 0.03
   
-  net = skip(input_depth, img_np.shape[0], 
+  # Align mask spatial dims to image (center-crop if mask is larger)
+  tH, tW = img_np.shape[1], img_np.shape[2]
+  if img_mask_np.shape[1] != tH or img_mask_np.shape[2] != tW:
+      dH = (img_mask_np.shape[1] - tH) // 2
+      dW = (img_mask_np.shape[2] - tW) // 2
+      img_mask_np = img_mask_np[:, dH:dH + tH, dW:dW + tW]
+
+  net = skip(input_depth, img_np.shape[0],
              num_channels_down = [128] * 5,
              num_channels_up =   [128] * 5,
-             num_channels_skip =    [128] * 5,  
-             filter_size_up = 3, filter_size_down = 3, 
+             num_channels_skip =    [128] * 5,
+             filter_size_up = 3, filter_size_down = 3,
              upsample_mode='nearest', filter_skip_size=1,
              need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU').type(dtype)
-               
+
   net = net.type(dtype)
   net_input = get_noise(input_depth, INPUT, img_np.shape[1:]).type(dtype)
 
