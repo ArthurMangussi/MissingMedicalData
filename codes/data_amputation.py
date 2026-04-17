@@ -14,17 +14,15 @@ class ImageDataAmputation:
     - Binary mask indicating missing pixels (1 = missing, 0 = present)
     """
 
-    def __init__(self, missing_rate: float):
+    def __init__(self):
         """
         Initialize the amputation generator.
 
         Parameters
         ----------
-        missing_rate : float
-            Target missing data rate (probability). Must be between 0 and 1.
-            Example: 0.2 means approximately 20% missing data.
+
         """
-        self.missing_rate = missing_rate
+        
 
     def _normalize_and_prepare(self, x_data: np.ndarray) -> tuple:
         """
@@ -74,58 +72,6 @@ class ImageDataAmputation:
     # MCAR: Missing Completely At Random
     # ────────────────────────────────────────────────────────────────────────
 
-    def generate_mcar_uniform(self, x_data: np.ndarray) -> tuple:
-        """
-        Generate uniformly random missing pixels (MCAR mechanism).
-
-        Each pixel has the same probability of being missing, independent of its
-        intensity or location. Missing values are limited to foreground regions.
-
-        **Recommended for:**
-        - Sensor noise modeling
-        - Random pixel failures
-        - General baseline comparison
-
-        Parameters
-        ----------
-        x_data : np.ndarray
-            Input image (2D: H×W, 3D: H×W×C, or batch dimension allowed)
-            Can be uint8 (0-255) or float
-
-        Returns
-        -------
-        original : np.ndarray
-            Normalized image without any modifications
-        missing_data : np.ndarray
-            Image with randomly placed NaN values
-        mask : np.ndarray
-            Binary mask (1 = missing pixel, 0 = present)
-
-        Example
-        -------
-        >>> amputer = ImageDataAmputation(missing_rate=0.1)
-        >>> original, missing, mask = amputer.generate_mcar_uniform(image)
-        """
-        x_data, foreground_mask, _ = self._normalize_and_prepare(x_data)
-        num_channels = x_data.shape[-1]
-
-        # Generate random binary mask with uniform probability
-        missing_mask_2d = np.random.choice(
-            [0, 1],
-            size=(x_data.shape[0], x_data.shape[1], x_data.shape[2]),
-            p=[1 - self.missing_rate, self.missing_rate],
-        )
-
-        # Expand to all channels and limit to foreground
-        missing_mask_limited = missing_mask_2d * foreground_mask
-        missing_mask = np.stack(
-            (missing_mask_limited,) * num_channels, axis=-1
-        ).astype(np.float32)
-
-        x_data_md = self._apply_mask(x_data, missing_mask)
-
-        return x_data, x_data_md, missing_mask
-
     def generate_mcar_dead_pixels(
         self,
         x_data: np.ndarray,
@@ -172,7 +118,6 @@ class ImageDataAmputation:
         ... )
         """
         x_data, foreground_mask, _ = self._normalize_and_prepare(x_data)
-        num_channels = x_data.shape[-1]
         batch, height, width = x_data.shape[0], x_data.shape[1], x_data.shape[2]
 
         # Individual dead pixels
@@ -190,13 +135,9 @@ class ImageDataAmputation:
 
         # Limit to foreground
         missing_mask_limited = missing_mask_2d * foreground_mask
-        missing_mask = np.stack(
-            (missing_mask_limited,) * num_channels, axis=-1
-        ).astype(np.float32)
+        x_data_md = self._apply_mask(x_data, missing_mask_limited)
 
-        x_data_md = self._apply_mask(x_data, missing_mask)
-
-        return x_data, x_data_md, missing_mask
+        return x_data, x_data_md, missing_mask_limited
 
     # ────────────────────────────────────────────────────────────────────────
     # MAR: Missing At Random (depends on observed covariates)
@@ -263,7 +204,7 @@ class ImageDataAmputation:
         self,
         x_data: np.ndarray,
         side: str = "bottom",
-        frac: float = 0.08,
+        frac: float = 0.20,
         smooth_sigma: float = 5,
     ) -> tuple:
         """
@@ -331,80 +272,7 @@ class ImageDataAmputation:
 
         return x_data, x_data_md, missing_mask_limited
 
-    def generate_mar_compression_plate(
-        self,
-        x_data: np.ndarray,
-        thickness_map: np.ndarray,
-        threshold_frac: float = 0.15,
-        sigma: float = 8,
-    ) -> tuple:
-        """
-        Simulate compression plate artifact at thin regions.
-
-        Models breast compression artifacts at plate edges (mammography-specific).
-        Missingness depends on tissue thickness map (observed covariate).
-        Morphology: gradient at edges of compressed regions.
-
-        **Recommended for:**
-        - Mammography simulation
-        - Tissue compression artifacts
-        - Multi-modal imaging
-
-        Parameters
-        ----------
-        x_data : np.ndarray
-            Input image (2D: H×W, 3D: H×W×C, or batch dimension allowed)
-        thickness_map : np.ndarray
-            Tissue thickness map normalized to [0, 1].
-            0 = thin (edge), 1 = thick (center)
-        threshold_frac : float, optional
-            Threshold fraction for artifact boundary. Default: 0.15
-        sigma : float, optional
-            Gaussian smoothing sigma. Default: 8
-
-        Returns
-        -------
-        original : np.ndarray
-            Normalized image without any modifications
-        missing_data : np.ndarray
-            Image with compression plate artifacts (NaN values)
-        mask : np.ndarray
-            Binary mask (1 = missing, 0 = present)
-
-        Example
-        -------
-        >>> amputer = ImageDataAmputation(missing_rate=0.1)
-        >>> thickness = np.linspace(0, 1, 512).reshape(512, 1)
-        >>> original, missing, mask = amputer.generate_mar_compression_plate(
-        ...     image, thickness_map=thickness
-        ... )
-        """
-        x_data, foreground_mask, _ = self._normalize_and_prepare(x_data)
-        num_channels = x_data.shape[-1]
-        batch, height, width = x_data.shape[0], x_data.shape[1], x_data.shape[2]
-
-        # Ensure thickness_map has compatible shape
-        if thickness_map.shape != (batch, height, width):
-            thickness_map = np.broadcast_to(thickness_map, (batch, height, width))
-
-        thresh = threshold_frac
-        prob = np.clip(1.0 - thickness_map / (thresh + 1e-8), 0, 1) ** 2
-
-        missing_mask_2d = np.zeros((batch, height, width), dtype=np.float32)
-        for b in range(batch):
-            prob_smooth = gaussian_filter(prob[b], sigma=sigma)
-            missing_mask_2d[b] = np.random.binomial(1, prob_smooth).astype(np.float32)
-
-        # Limit to foreground
-        missing_mask_limited = missing_mask_2d * foreground_mask
-        missing_mask = np.stack(
-            (missing_mask_limited,) * num_channels, axis=-1
-        ).astype(np.float32)
-
-        x_data_md = self._apply_mask(x_data, missing_mask)
-
-        return x_data, x_data_md, missing_mask
-
+    
     # ────────────────────────────────────────────────────────────────────────
     # MNAR: Missing Not At Random (depends on unobserved data)
     # ────────────────────────────────────────────────────────────────────────
@@ -539,81 +407,85 @@ class ImageDataAmputation:
 
         return x_data, x_data_md, missing_mask
 
-    def generate_mnar_motion_edges(
-        self,
-        x_data: np.ndarray,
-        grad_threshold: float = 0.15,
-        alpha: float = 6.0,
-        sigma: float = 2,
-    ) -> tuple:
+    def generate_random_squares_mask(self,x_data: np.ndarray, num_squares: int = 4, square_size: int = 5) -> np.ndarray:
         """
-        Simulate motion blur at anatomical edges (high-gradient regions).
+        Gera uma máscara binária 2D com 'num_squares' quadrados de 'square_size' x 'square_size'.
+        Os quadrados são posicionados aleatoriamente APENAS em pixels não-zero da imagem.
 
-        Motion artifacts are more severe at structural boundaries where spatial
-        gradients are high. Missingness depends on local image gradients (unobserved
-        mechanism if pixel is missing). Morphology: streaks along edges.
+        Args:
+            image_2d: Array NumPy 2D da imagem (H, W).
+            num_squares: Número de quadrados a serem gerados (padrão é 4).
+            square_size: Tamanho do lado do quadrado (padrão é 5).
 
-        **Recommended for:**
-        - Motion artifact simulation
-        - Boundary blur
-        - Breathing/cardiac motion
-
-        Parameters
-        ----------
-        x_data : np.ndarray
-            Input image (2D: H×W, 3D: H×W×C, or batch dimension allowed)
-        grad_threshold : float, optional
-            Gradient magnitude threshold. Default: 0.15
-        alpha : float, optional
-            Sigmoid steepness. Default: 6.0
-        sigma : float, optional
-            Gaussian smoothing sigma. Default: 2
-
-        Returns
-        -------
-        original : np.ndarray
-            Normalized image without any modifications
-        missing_data : np.ndarray
-            Image with motion blur artifacts (NaN values)
-        mask : np.ndarray
-            Binary mask (1 = missing, 0 = present)
-
-        Example
-        -------
-        >>> amputer = ImageDataAmputation(missing_rate=0.1)
-        >>> original, missing, mask = amputer.generate_mnar_motion_edges(
-        ...     image, grad_threshold=0.2, alpha=8.0
-        ... )
+        Returns:
+            Um array NumPy 2D (H, W) representando a máscara binária (0s e 1s).
         """
-        x_data, foreground_mask, _ = self._normalize_and_prepare(x_data)
-        num_channels = x_data.shape[-1]
-        batch, height, width = x_data.shape[0], x_data.shape[1], x_data.shape[2]
+        # Garante que a entrada seja 4D (N, H, W, C)
+        if len(x_data.shape) == 3:
+            x_data = np.expand_dims(x_data, axis=-1)
 
-        grayscale = x_data.mean(axis=-1)
+        N, H, W, C = x_data.shape
+        
+        # 1. Inicializar a lista para armazenar as máscaras 2D de cada imagem
+        all_missing_masks_2d = []
 
-        missing_mask_2d = np.zeros((batch, height, width), dtype=np.float32)
-        for b in range(batch):
-            # Gradient via Sobel
-            gx = np.gradient(grayscale[b], axis=1)
-            gy = np.gradient(grayscale[b], axis=0)
-            grad_mag = np.sqrt(gx**2 + gy**2)
-            grad_norm = grad_mag / (grad_mag.max() + 1e-8)
-            grad_smooth = gaussian_filter(grad_norm, sigma=sigma)
+        # 2. Iterar sobre cada imagem no batch
+        for i in range(N):
+            # A. Fatiar a imagem atual (2D, considerando apenas o primeiro canal para simplicidade)
+            # Assumindo que o foreground é o mesmo em todos os canais
+            image_2d = x_data[i, :, :, 0]
+            
+            # B. Identificar as Coordenadas Válidas DENTRO DESTA IMAGEM 2D
+            # np.where retorna apenas (H, W)
+            valid_y, valid_x = np.where(image_2d > 0)
+            valid_indices = np.arange(len(valid_y))
+            
+            # C. Inicializar a máscara 2D para esta imagem
+            mask_2d = np.zeros((H, W), dtype=np.uint8)
 
-            # P(missing | gradient) = sigmoid
-            prob = 1.0 / (1.0 + np.exp(-alpha * (grad_smooth - grad_threshold)))
-            missing_mask_2d[b] = np.random.binomial(1, prob).astype(np.float32)
+            # D. Iterar para gerar cada quadrado
+            for _ in range(num_squares):
+                if len(valid_indices) == 0:
+                    break
+                    
+                rand_idx = np.random.choice(valid_indices)
+                center_y = valid_y[rand_idx]
+                center_x = valid_x[rand_idx]
+                
+                # Cálculo dos limites do quadrado (H, W)
+                start_y = max(0, center_y)
+                end_y = min(H, center_y + square_size)
+                start_x = max(0, center_x)
+                end_x = min(W, center_x + square_size)
 
-        # Limit to foreground
-        missing_mask_limited = missing_mask_2d * foreground_mask
-        missing_mask = np.stack(
-            (missing_mask_limited,) * num_channels, axis=-1
-        ).astype(np.float32)
+                # E. Aplicar o quadrado NA MÁSCARA 2D ATUAL
+                mask_2d[start_y:end_y, start_x:end_x] = 1
+            
+            # Adicionar a máscara 2D gerada à lista
+            all_missing_masks_2d.append(mask_2d)
 
-        x_data_md = self._apply_mask(x_data, missing_mask)
+        # 3. Empilhar as máscaras 2D de volta em um array 3D (N, H, W)
+        missing_mask_3d = np.stack(all_missing_masks_2d, axis=0)
 
-        return x_data, x_data_md, missing_mask
+        # 4. Expansão para Canais e Aplicação da Falta (Como no seu código original)
+        # Transforma a máscara (N, H, W) em (N, H, W, C) para multiplicação
+        # (Adiciona a dimensão do canal para broadcasting)
+        missing_mask_4d = np.expand_dims(missing_mask_3d, axis=-1)
+        missing_mask_4d = np.repeat(missing_mask_4d, C, axis=-1)
+        
+        # Aplica missing: onde a máscara é 1, o valor será -1.0 temporariamente
+        x_data_md = x_data * (~missing_mask_4d.astype(bool)).astype(x_data.dtype) + -1.0 * missing_mask_4d
 
+        # Converte o -1.0 para np.nan. Isso requer que x_data_md seja float.
+        # Se x_data for int, você precisa primeiro converter a saída para float:
+        if x_data.dtype.kind in np.typecodes['AllInteger']:
+            x_data_md = x_data_md.astype(np.float32)
+
+        x_data_md[x_data_md == -1] = np.nan
+
+        # Retornamos o x_data original, o corrompido, e a máscara 3D (N, H, W) se for usada no loss
+        return x_data, x_data_md, missing_mask_3d
+    
     def generate_mnar_low_snr(
         self,
         x_data: np.ndarray,

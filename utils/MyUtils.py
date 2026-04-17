@@ -6,7 +6,6 @@ import pandas as pd
 class Utilities:
     @staticmethod
     def save_image(mechanism:str, 
-                   missing_rate:str, 
                    images:np.ndarray, 
                    fold:int, 
                    model_impt:str,
@@ -16,7 +15,7 @@ class Utilities:
         """
         Method to save the array as an image.
         """
-        save_dir = f"./new_results/{dataset}/{model_impt}/imputed_images/fold{fold}_{mechanism}_{missing_rate}"
+        save_dir = f"./new_results/{dataset}/{model_impt}/imputed_images/fold{fold}_{mechanism}"
         os.makedirs(save_dir, exist_ok=True)
         
         try:

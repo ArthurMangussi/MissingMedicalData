@@ -21,7 +21,6 @@ from utils.MyModels import ModelsImputation
 from utils.MyUtils import Utilities
 
 def run_experimental_design(model_impt:str,
-                            missing_rate: float,
                             md_mechanism: str,
                             images: np.ndarray,
                             labels_names:dict, 
@@ -56,11 +55,11 @@ def run_experimental_design(model_impt:str,
             x_train_val, y_train_val, test_size=0.2, random_state=fold
     )
 
-        amputation = ImageDataAmputation(missing_rate=missing_rate)
+        amputation = ImageDataAmputation()
         
-        x_train, x_train_md, _ = amputation.generate_mar_stripes(x_train)
-        x_val, x_val_md, _ = amputation.generate_mar_stripes(x_val)
-        x_test, x_test_md, missing_mask_test = amputation.generate_mar_stripes(x_test)
+        x_train, x_train_md, _ = amputation.generate_mar_truncation(x_train)
+        x_val, x_val_md, _ = amputation.generate_mar_truncation(x_val)
+        x_test, x_test_md, missing_mask_test = amputation.generate_mar_truncation(x_test )
 
 
         model = ModelsImputation()
@@ -94,7 +93,6 @@ def run_experimental_design(model_impt:str,
           
         ## Save the reconstructed image
         ut.save_image(mechanism=md_mechanism,
-                    missing_rate=missing_rate,
                     images=x_test_imputed,
                     fold=fold,
                     model_impt=model_impt,
@@ -163,13 +161,7 @@ def run_experimental_design(model_impt:str,
 
 if __name__ == "__main__":
     
-    # name = "vindr-reduzido"
-    # data = Datasets(name)
-    # inbreast_images, y_mapped, image_ids = data.load_data()
-    # run_experimental_design("vaewl",0.05,"SQUARE",inbreast_images, y_mapped, image_ids)
-    
-    
-    dataset_names = ["vindr-reduzido"] 
+    dataset_names = ["inbreast"] 
     tempo_total = {}
     for name in dataset_names:
         # Carregar as imagens
