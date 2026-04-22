@@ -108,13 +108,15 @@ class DeepImagePrior:
         else:
             self.dtype = torch.FloatTensor
 
-    def fit_transform(
-        self,
-        x_train: np.ndarray,
-        mask_train: np.ndarray,
-    ) -> np.ndarray:
+    def fit(self, x_train: np.ndarray, mask_train: np.ndarray):
         """
-        Train DIP network on image with missing pixels.
+        Train DIP network on image with missing pixels. 
+        
+        Training Strategy:
+        DIP uses an untrained convolutional network as an implicit prior. The network 
+        is optimized to map a fixed random noise tensor to the observed (non-missing) 
+        pixels of the corrupted image. Gradient descent is used to minimize the MSE 
+        loss only on the known pixels.
 
         Parameters
         ----------
@@ -124,12 +126,10 @@ class DeepImagePrior:
         mask_train : np.ndarray
             Binary mask indicating missing pixels (1 = missing, 0 = present).
             Shape must match x_train
-
+            
         Returns
         -------
-        imputed_image : np.ndarray
-            Reconstructed image with missing pixels filled.
-            Shape: same as x_train
+        self
         """
         x_train = x_train.squeeze(axis=-1)
         
@@ -191,7 +191,7 @@ class DeepImagePrior:
         mse = torch.nn.MSELoss().type(self.dtype)
 
         # Save original input for regularization
-        net_input_saved = net_input.detach().clone()
+        self._net_input_saved = net_input.detach().clone()
         noise = net_input.detach().clone()
 
         # Optimization parameters
@@ -200,11 +200,11 @@ class DeepImagePrior:
         # Define closure for optimization
         def closure():
             if self.reg_noise_std > 0:
-                net_input_current = net_input_saved + (
+                net_input_current = self._net_input_saved + (
                     noise.normal_() * self.reg_noise_std
                 )
             else:
-                net_input_current = net_input_saved
+                net_input_current = self._net_input_saved
 
             out = self.net(net_input_current)
 
@@ -216,10 +216,24 @@ class DeepImagePrior:
 
         # Run optimization
         dip.optimize("adam", params, closure, self.learning_rate, self.num_iter)
+        
+        return self
 
+    def transform(self, x_test: np.ndarray = None, mask_test: np.ndarray = None) -> np.ndarray:
+        """
+        Apply the trained DIP network to generate the missing parts of the image.
+        
+        Returns
+        -------
+        imputed_image : np.ndarray
+            Reconstructed image with missing pixels filled.
+        """
+        if self.net is None or getattr(self, "_net_input_saved", None) is None:
+            raise ValueError("The model must be fitted before calling transform.")
+            
         # Get final reconstruction
         with torch.no_grad():
-            reconstructed = self.net(net_input_saved).detach()
+            reconstructed = self.net(self._net_input_saved).detach()
 
         imputed_np = dip.torch_to_np(reconstructed)
 
@@ -227,6 +241,29 @@ class DeepImagePrior:
         torch.cuda.empty_cache()
 
         return imputed_np
+
+    def fit_transform(
+        self,
+        x_train: np.ndarray,
+        mask_train: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Train DIP network on image with missing pixels and return the imputed image.
+        
+        Parameters
+        ----------
+        x_train : np.ndarray
+            Image with missing pixels.
+        mask_train : np.ndarray
+            Binary mask indicating missing pixels.
+            
+        Returns
+        -------
+        imputed_image : np.ndarray
+            Reconstructed image.
+        """
+        self.fit(x_train, mask_train)
+        return self.transform()
 
 
 class DiffusionInpainting:

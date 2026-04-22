@@ -91,7 +91,14 @@ def run_experimental_design(model_impt:str,
         else:
             # DIP, KNN, MICE, etc.
             if model_impt == "dip":
-                x_test_imputed = imputer.fit_transform(x_train, missing_mask_train)
+                x_test_imputed = []
+                for i in range(x_test_md.shape[0]):
+                    _logger.info(f"DIP: Imputing Image {i+1} of {x_test_md.shape[0]}")
+                    imputer.fit(x_train=x_test_md[i], mask_train=missing_mask_test[i])
+                    imputed = imputer.transform()
+                    x_test_imputed.append(imputed)
+                
+                x_test_imputed = np.array(x_test_imputed)
             else:
                 x_test_imputed = imputer.transform(x_test_md)
           
