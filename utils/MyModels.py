@@ -131,12 +131,19 @@ class DeepImagePrior:
             Reconstructed image with missing pixels filled.
             Shape: same as x_train
         """
+        x_train = x_train.squeeze(axis=-1)
+        
+
         # Ensure proper shape for processing
         if len(x_train.shape) == 2:
             x_train = np.expand_dims(x_train, axis=0)  # Add channel dimension
 
         if len(mask_train.shape) == 2:
             mask_train = np.expand_dims(mask_train, axis=0)
+
+        if x_train.shape[0] == 1:
+            x_train = x_train[0]    # Result: (82, 224, 224)
+            mask_train = mask_train[0]
 
         # Normalize if needed
         if x_train.max() > 1.0:
@@ -297,7 +304,7 @@ class DiffusionInpainting:
         self,
         model_dir: str = "Likalto4/inpainting_vindr_massbs16",
         device: str = "cuda",
-        torch_dtype=torch.float16,
+        torch_dtype=torch.float32,
     ):
         """
         Initialize Diffusion Inpainting model.
@@ -320,6 +327,7 @@ class DiffusionInpainting:
             model_dir,
             safety_checker=None,
             torch_dtype=torch_dtype,
+            requires_safety_checker=False
         ).to(device)
 
         # Set scheduler for faster inference
@@ -382,51 +390,40 @@ class DiffusionInpainting:
         arr_hwc = arr_uint8.transpose(1, 2, 0)
         return Image.fromarray(arr_hwc, mode="RGB")
 
-    def _to_np(
-        self, pil_image: Image.Image, original_shape: tuple
-    ) -> np.ndarray:
-        """
-        Convert PIL Image back to numpy array matching original shape.
+    def _to_np(self, pil_image: Image.Image, original_shape: tuple) -> np.ndarray:
+        # 1. Converte PIL (RGB) para numpy (224, 224, 3) e normaliza [0, 1]
+        arr = np.array(pil_image).astype(np.float32) / 255.0
 
-        Parameters
-        ----------
-        pil_image : PIL.Image.Image
-            RGB PIL image
-        original_shape : tuple
-            Target shape to match
-
-        Returns
-        -------
-        arr : np.ndarray
-            Numpy array [0, 1], shape matching original input
-        """
-        # Convert PIL to numpy (H, W, 3) [0, 255]
-        arr_uint8 = np.array(pil_image)  # (H, W, 3)
-        arr = arr_uint8.astype(np.float32) / 255.0
-
-        # Match original shape
+        # 2. Se o original for (H, W)
         if len(original_shape) == 2:
-            # Return single grayscale channel
             return arr[:, :, 0]
-        elif len(original_shape) == 3:
+
+        # 3. Se o original for 3D (ex: 224, 224, 1 ou 3, 224, 224)
+        if len(original_shape) == 3:
+            # Caso: (1, H, W) -> Canal no início
             if original_shape[0] == 1:
-                # (1, H, W)
                 return arr[:, :, 0:1].transpose(2, 0, 1)
+            
+            # Caso: (3, H, W) -> RGB no início
             elif original_shape[0] == 3:
-                # (3, H, W)
                 return arr.transpose(2, 0, 1)
-            else:
-                # Return first channel
-                return arr[:, :, 0:1].transpose(2, 0, 1)
-        else:
-            return arr
+            
+            # Caso: (H, W, 1) -> O SEU CASO ATUAL
+            elif original_shape[2] == 1:
+                return arr[:, :, 0:1] # Retorna (224, 224, 1)
+            
+            # Caso: (H, W, 3) -> RGB no fim
+            elif original_shape[2] == 3:
+                return arr
+
+        return arr
 
     def fit(
         self,
         x_train: np.ndarray,
         mask_train: np.ndarray,
         prompt: str = "medical image",
-        num_inference_steps: int = 20,
+        num_inference_steps: int = 2000,
     ) -> np.ndarray:
         """
         Apply diffusion inpainting to a single image with missing pixels.
@@ -458,19 +455,18 @@ class DiffusionInpainting:
 
         # Convert to PIL images
         image_pil = self._to_pil(x_train)
-        mask_pil = self._to_pil(mask_train)
-
-        # Invert mask if needed (diffusion typically uses 1=inpaint, 0=keep)
-        # User convention: 1=missing, 0=present → invert for pipeline
-        mask_pil = Image.fromarray(
-            255 - np.array(mask_pil).astype(np.uint8), mode="RGB"
-        )
+        # AJUSTE DE MÁSCARA: Garanta que a área a ser preenchida seja BRANCA (255)
+        m_np = (mask_train * 255).astype(np.uint8)
+        # Se sua máscara original for 1=missing, use direto. Se for 0=missing, inverta.
+        mask_pil = Image.fromarray(m_np).convert("L")
 
         # Run diffusion inpainting
         with torch.no_grad():
             output = self.pipe(
                 prompt=prompt,
                 image=image_pil,
+                height=image_pil.height,
+                width=image_pil.width,
                 mask_image=mask_pil,
                 num_inference_steps=num_inference_steps,
                 guidance_scale=7.5,
@@ -483,7 +479,7 @@ class DiffusionInpainting:
         mask_train_normalized = mask_train
         if len(mask_train.shape) != len(x_train.shape):
             if len(x_train.shape) == 3 and len(mask_train.shape) == 2:
-                mask_train_normalized = np.expand_dims(mask_train, axis=0)
+                mask_train_normalized = np.expand_dims(mask_train, axis=-1)
 
         # Normalize x_train if needed
         x_train_normalized = x_train
@@ -491,62 +487,9 @@ class DiffusionInpainting:
             x_train_normalized = x_train.astype(np.float32) / 255.0
 
         # Blend
-        blended = x_train_normalized * (1 - mask_train_normalized) + imputed_np * mask_train_normalized
+        #blended = x_train_normalized * (1 - mask_train_normalized) + imputed_np * mask_train_normalized
 
-        return blended
-
-    def transform(
-        self,
-        x_test: np.ndarray,
-        mask_test: np.ndarray,
-        **kwargs
-    ) -> np.ndarray:
-        """
-        Apply trained diffusion model to test image.
-
-        Diffusion models are always used for inference (no separate training step).
-        This method applies inpainting to new images.
-
-        Parameters
-        ----------
-        x_test : np.ndarray
-            Test image
-        mask_test : np.ndarray
-            Mask indicating missing pixels
-        **kwargs : optional
-            Additional arguments for fit() (prompt, num_inference_steps, etc.)
-
-        Returns
-        -------
-        output : np.ndarray
-            Imputed image
-        """
-        return self.fit(x_test, mask_test, **kwargs)
-
-    def fit_transform(
-        self,
-        x_train: np.ndarray,
-        mask_train: np.ndarray,
-        **kwargs
-    ) -> np.ndarray:
-        """
-        Fit and transform in one call (delegates to fit).
-
-        Parameters
-        ----------
-        x_train : np.ndarray
-            Image with missing pixels
-        mask_train : np.ndarray
-            Missing mask
-        **kwargs : optional
-            Additional arguments
-
-        Returns
-        -------
-        imputed_image : np.ndarray
-            Reconstructed image
-        """
-        return self.fit(x_train, mask_train, **kwargs)
+        return imputed_np
 
 
 class ModelsImputation:
@@ -599,10 +542,12 @@ class ModelsImputation:
     @staticmethod
     def model_dip(
         num_iter: int = 400,
-        learning_rate: float = 0.03,
+        learning_rate: float = 1e10,
         input_depth: int = 32,
         num_channels: int = 128,
         device: str = "cuda",
+        x_train: np.ndarray = None,
+        mask_train: np.ndarray = None,
     ):
         """
         Initialize a Deep Image Prior model with specified hyperparameters.
@@ -788,7 +733,8 @@ class ModelsImputation:
         x_train: np.ndarray = None,
         x_train_md: np.ndarray = None,
         x_val_md: np.ndarray = None,
-        x_val: np.ndarray = None
+        x_val: np.ndarray = None,
+        missing_mask: np.ndarray = None,
     ):
         match model:
 
@@ -823,7 +769,7 @@ class ModelsImputation:
 
             case "dip":
                 self._logger.info("[DIP] Initializing...")
-                return ModelsImputation.model_dip()
+                return ModelsImputation.model_dip(x_train=x_train, mask_train=missing_mask, num_iter=1000)
 
             case "diffusion":
                 self._logger.info("[Diffusion] Loading pipeline...")

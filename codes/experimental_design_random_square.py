@@ -86,11 +86,25 @@ def run_experimental_design(model_impt:str,
             x_test_imputed = model.diffusion_transform(model=imputer,
                                                        x_test_md_np=x_test_md,
                                                        missing_mask_test_np=missing_mask_test,
-                                                       prompt="mammography medical image",
-                                                       num_inference_steps=20)
+                                                       prompt="medical image",
+                                                       num_inference_steps=50)
         else:
-            # DIP, KNN, MICE, etc. - use incomplete image
-            x_test_imputed = imputer.transform(x_test_md)
+            # DIP, KNN, MICE, etc.
+            if model_impt == "dip":
+                # DIP processa uma imagem/volume por vez
+                # Se x_test_md for [N, C, H, W, 1], processamos cada N
+                reconstructions = []
+                for i in range(x_test_md.shape[0]):
+                    print(f"Processing image {i+1}/{x_test_md.shape[0]} with DIP...")
+                    # Passa apenas uma amostra por vez
+                    img_single = x_test_md[i:i+1] 
+                    res = imputer.transform(img_single)
+                    reconstructions.append(res)
+                
+                # Junta tudo de volta no eixo do batch
+                x_test_imputed = np.concatenate(reconstructions, axis=0)
+            else:
+                x_test_imputed = imputer.transform(x_test_md)
           
         ## Save the reconstructed image
         ut.save_image(mechanism=md_mechanism,
@@ -104,6 +118,8 @@ def run_experimental_design(model_impt:str,
         ## Measure the imputation performance
         # Handle multi-channel images by averaging across channels
         missing_mask_test_binary = missing_mask_test.astype(bool)
+        if x_test_imputed.ndim == 4:  # If mask has channel dimension, reduce it
+            x_test_imputed = np.squeeze(x_test_imputed, axis=-1)  # Reduce to (N, H, W)
 
         # Extract only missing pixels from both images
         x_imputed_missing = x_test_imputed[missing_mask_test_binary]
@@ -120,12 +136,12 @@ def run_experimental_design(model_impt:str,
             for c in range(x_test.shape[0]):
                 psnr_c = peak_signal_noise_ratio(
                     x_test_imputed[c, missing_mask_test_binary[c]],
-                    x_test[c, missing_mask_test_binary[c]],
+                    x_test[c, missing_mask_test_binary[c]].reshape(-1),
                     data_range=1.0
                 )
                 ssim_c = structural_similarity(
-                    x_test_imputed[c][missing_mask_test_binary[c].reshape(x_test[c].shape)],
-                    x_test[c][missing_mask_test_binary[c].reshape(x_test[c].shape)],
+                     x_test_imputed[c, missing_mask_test_binary[c]],
+                    x_test[c, missing_mask_test_binary[c]].reshape(-1),
                     data_range=1.0
                 )
                 psnr_values.append(psnr_c)
@@ -170,7 +186,7 @@ if __name__ == "__main__":
         inbreast_images, y_mapped, image_ids = data.load_data()
         
         
-        algorithms = ["vaewl"]
+        algorithms = ["diffusion"]
         MD_MECHANISMS = "MAR-Truncation"
         
         for model_impt in algorithms:

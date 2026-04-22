@@ -41,8 +41,11 @@ import PIL.ImageDraw as ImageDraw
 import PIL.ImageFont as ImageFont
 
 def skip(
-        num_input_channels=2, num_output_channels=3, 
-        num_channels_down=[16, 32, 64, 128, 128], num_channels_up=[16, 32, 64, 128, 128], num_channels_skip=[4, 4, 4, 4, 4], 
+        num_input_channels=32, 
+        num_output_channels=3, 
+        num_channels_down=[16, 32, 64, 128, 128], 
+        num_channels_up=[16, 32, 64, 128, 128],
+          num_channels_skip=[4, 4, 4, 4, 4], 
         filter_size_down=3, filter_size_up=3, filter_skip_size=1,
         need_sigmoid=True, need_bias=True, 
         pad='zero', upsample_mode='nearest', downsample_mode='stride', act_fun='LeakyReLU', 
@@ -97,7 +100,7 @@ def skip(
             skip.add(bn(num_channels_skip[i]))
             skip.add(act(act_fun))
             
-        # skip.add(Concat(2, GenNoise(nums_noise[i]), skip_part))
+        #skip.add(Concat(2, GenNoise(nums_noise[i]), skip_part))
 
         deeper.add(conv(input_depth, num_channels_down[i], filter_size_down[i], 2, bias=need_bias, pad=pad, downsample_mode=downsample_mode[i]))
         deeper.add(bn(num_channels_down[i]))
