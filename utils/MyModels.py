@@ -108,7 +108,7 @@ class DeepImagePrior:
         else:
             self.dtype = torch.FloatTensor
 
-    def fit(
+    def fit_transform(
         self,
         x_train: np.ndarray,
         mask_train: np.ndarray,
@@ -227,63 +227,6 @@ class DeepImagePrior:
         torch.cuda.empty_cache()
 
         return imputed_np
-
-    def transform(self, x_test: np.ndarray) -> np.ndarray:
-        """
-        Apply trained DIP network to test image.
-
-        Note: DIP is typically used as a single-image method without pre-training.
-        This method applies the trained network if available.
-
-        Parameters
-        ----------
-        x_test : np.ndarray
-            Image to process
-
-        Returns
-        -------
-        output : np.ndarray
-            Processed image
-        """
-        if self.net is None:
-            raise RuntimeError("Network not trained. Call fit() first.")
-
-        if len(x_test.shape) == 2:
-            x_test = np.expand_dims(x_test, axis=0)
-
-        if x_test.max() > 1.0:
-            x_test = x_test.astype(np.float32) / 255.0
-
-        x_test_torch = dip.np_to_torch(x_test).type(self.dtype)
-
-        with torch.no_grad():
-            output = self.net(x_test_torch).detach()
-
-        return dip.torch_to_np(output)
-
-    def fit_transform(
-        self,
-        x_train: np.ndarray,
-        mask_train: np.ndarray,
-    ) -> np.ndarray:
-        """
-        Fit DIP on training image and return imputed result.
-
-        Convenience method combining fit() and direct output.
-
-        Parameters
-        ----------
-        x_train : np.ndarray
-            Image with missing pixels
-        mask_train : np.ndarray
-            Binary mask of missing pixels
-
-        Returns
-        -------
-        imputed_image : np.ndarray
-            Reconstructed image
-        """
-        return self.fit(x_train, mask_train)
 
 
 class DiffusionInpainting:
@@ -475,20 +418,6 @@ class DiffusionInpainting:
         output_pil = output.images[0]
         imputed_np = self._to_np(output_pil, original_shape)
 
-        # Blend: preserve observed pixels exactly
-        mask_train_normalized = mask_train
-        if len(mask_train.shape) != len(x_train.shape):
-            if len(x_train.shape) == 3 and len(mask_train.shape) == 2:
-                mask_train_normalized = np.expand_dims(mask_train, axis=-1)
-
-        # Normalize x_train if needed
-        x_train_normalized = x_train
-        if x_train.max() > 1.0:
-            x_train_normalized = x_train.astype(np.float32) / 255.0
-
-        # Blend
-        #blended = x_train_normalized * (1 - mask_train_normalized) + imputed_np * mask_train_normalized
-
         return imputed_np
 
 
@@ -577,7 +506,6 @@ class ModelsImputation:
             input_depth=input_depth,
             num_channels=num_channels,
         )
-        model.fit(x_train=x_train, mask_train=mask_train)
         return model
 
     # ------------------------------------------------------------------------

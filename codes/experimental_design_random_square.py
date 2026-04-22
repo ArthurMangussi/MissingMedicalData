@@ -57,9 +57,9 @@ def run_experimental_design(model_impt:str,
 
         amputation = ImageDataAmputation()
         
-        x_train, x_train_md, missing_mask_train = amputation.generate_random_squares_mask(x_train)
-        x_val, x_val_md, _ = amputation.generate_random_squares_mask(x_val)
-        x_test, x_test_md, missing_mask_test = amputation.generate_random_squares_mask(x_test )
+        x_train, x_train_md, missing_mask_train = amputation.generate_random_squares_mask(x_train, square_size=50, num_squares=2)
+        x_val, x_val_md, _ = amputation.generate_random_squares_mask(x_val, square_size=50, num_squares=2)
+        x_test, x_test_md, missing_mask_test = amputation.generate_random_squares_mask(x_test, square_size=50, num_squares=2)
 
 
         model = ModelsImputation()
@@ -76,7 +76,7 @@ def run_experimental_design(model_impt:str,
             x_test_imputed = model.mae_imputer_transform(model=imputer,
                                         x_test_md_np=x_test_md,  # Fixed: use x_test_md (incomplete)
                                         missing_mask_test_np=missing_mask_test,
-                                        missing_rate=missing_rate)
+                                        )
 
         elif model_impt == "mc":
             x_test_imputed = imputer.transform(x_test_md, missing_mask_test)
@@ -86,23 +86,12 @@ def run_experimental_design(model_impt:str,
             x_test_imputed = model.diffusion_transform(model=imputer,
                                                        x_test_md_np=x_test_md,
                                                        missing_mask_test_np=missing_mask_test,
-                                                       prompt="medical image",
-                                                       num_inference_steps=50)
+                                                       prompt="mammography medical image",
+                                                       num_inference_steps=20_000)
         else:
             # DIP, KNN, MICE, etc.
             if model_impt == "dip":
-                # DIP processa uma imagem/volume por vez
-                # Se x_test_md for [N, C, H, W, 1], processamos cada N
-                reconstructions = []
-                for i in range(x_test_md.shape[0]):
-                    print(f"Processing image {i+1}/{x_test_md.shape[0]} with DIP...")
-                    # Passa apenas uma amostra por vez
-                    img_single = x_test_md[i:i+1] 
-                    res = imputer.transform(img_single)
-                    reconstructions.append(res)
-                
-                # Junta tudo de volta no eixo do batch
-                x_test_imputed = np.concatenate(reconstructions, axis=0)
+                x_test_imputed = imputer.fit_transform(x_train, missing_mask_train)
             else:
                 x_test_imputed = imputer.transform(x_test_md)
           
@@ -186,8 +175,8 @@ if __name__ == "__main__":
         inbreast_images, y_mapped, image_ids = data.load_data()
         
         
-        algorithms = ["diffusion"]
-        MD_MECHANISMS = "MAR-Truncation"
+        algorithms = ["dip"]
+        MD_MECHANISMS = "MNAR-RANDOM-SQUARES"
         
         for model_impt in algorithms:
                 init_time = perf_counter()
@@ -195,6 +184,6 @@ if __name__ == "__main__":
                 end_time = perf_counter()
                 tempo_total[f"{model_impt}-{MD_MECHANISMS}"] = round(end_time-init_time, 2)
                 
-    res_tempo = pd.DataFrame({"Tempo": tempo_total})
-    res_tempo.to_csv("tempo.csv", index=False)
+                res_tempo = pd.DataFrame({"Tempo": tempo_total})
+                res_tempo.to_csv("tempo.csv", index=False)
                 

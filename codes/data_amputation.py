@@ -444,16 +444,23 @@ class ImageDataAmputation:
 
         for i in range(N):
             image_2d = x_data[i, :, :, 0]
-            valid_y, valid_x = np.where(image_2d > 0)
+            # Criamos a máscara de onde existe imagem (foreground)
+            foreground_mask = (image_2d > 0).astype(np.float32)
+            
             mask_2d = np.zeros((H, W), dtype=np.float32)
+            valid_y, valid_x = np.where(image_2d > 0)
 
             for _ in range(num_squares):
                 if len(valid_y) == 0:
                     break
                 rand_idx = np.random.randint(len(valid_y))
                 r, c = valid_y[rand_idx], valid_x[rand_idx]
-                mask_2d[r : r + square_size, c : c + square_size] = 1
+                
+                # Desenha o quadrado
+                r_end, c_end = min(r + square_size, H), min(c + square_size, W)
+                mask_2d[r:r_end, c:c_end] = 1
 
+            mask_2d = mask_2d * foreground_mask
             all_masks.append(mask_2d)
 
         missing_mask_3d = np.stack(all_masks, axis=0)  # (N, H, W)
