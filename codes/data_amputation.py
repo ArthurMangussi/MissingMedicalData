@@ -407,7 +407,7 @@ class ImageDataAmputation:
 
         return x_data, x_data_md, missing_mask
 
-    def generate_random_squares_mask(
+    def generate_squares_mask(
         self, x_data: np.ndarray, num_squares: int = 4, square_size: int = 5
     ) -> tuple:
         """
@@ -450,10 +450,12 @@ class ImageDataAmputation:
             mask_2d = np.zeros((H, W), dtype=np.float32)
             valid_y, valid_x = np.where(image_2d > 0)
 
+            rng = np.random.default_rng(seed=i)
+
             for _ in range(num_squares):
                 if len(valid_y) == 0:
                     break
-                rand_idx = np.random.randint(len(valid_y))
+                rand_idx = rng.integers(0, len(valid_y))
                 r, c = valid_y[rand_idx], valid_x[rand_idx]
                 
                 # Desenha o quadrado

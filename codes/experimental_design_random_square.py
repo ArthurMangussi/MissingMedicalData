@@ -57,9 +57,9 @@ def run_experimental_design(model_impt:str,
 
         amputation = ImageDataAmputation()
         
-        x_train, x_train_md, missing_mask_train = amputation.generate_random_squares_mask(x_train, square_size=50, num_squares=2)
-        x_val, x_val_md, _ = amputation.generate_random_squares_mask(x_val, square_size=50, num_squares=2)
-        x_test, x_test_md, missing_mask_test = amputation.generate_random_squares_mask(x_test, square_size=50, num_squares=2)
+        x_train, x_train_md, _ = amputation.generate_squares_mask(x_train, square_size=50, num_squares=2)
+        x_val, x_val_md, _ = amputation.generate_squares_mask(x_val, square_size=50, num_squares=2)
+        x_test, x_test_md, missing_mask_test = amputation.generate_squares_mask(x_test, square_size=50, num_squares=2)
 
 
         model = ModelsImputation()
@@ -68,7 +68,6 @@ def run_experimental_design(model_impt:str,
                                     x_val_md=x_val_md,
                                     x_val=x_val,
                                     x_train_md=x_train_md,
-                                    missing_mask=missing_mask_train
                                     )
 
         if model_impt == "mae-vit" or model_impt == "mae-vit-gan":
@@ -83,22 +82,41 @@ def run_experimental_design(model_impt:str,
 
         elif model_impt == "diffusion":
             # Diffusion model - use incomplete image
+            prompt = "Full-field digital mammography, high-quality breast parenchyma, no artifacts, no lesions, inpainting task."
             x_test_imputed = model.diffusion_transform(model=imputer,
                                                        x_test_md_np=x_test_md,
                                                        missing_mask_test_np=missing_mask_test,
-                                                       prompt="mammography medical image",
-                                                       num_inference_steps=20_000)
+                                                       prompt=prompt,
+                                                       num_inference_steps=50)
         else:
             # DIP, KNN, MICE, etc.
             if model_impt == "dip":
-                x_test_imputed = []
+                x_test_imputed_list = []
+                
                 for i in range(x_test_md.shape[0]):
                     _logger.info(f"DIP: Imputing Image {i+1} of {x_test_md.shape[0]}")
-                    imputer.fit(x_train=x_test_md[i], mask_train=missing_mask_test[i])
-                    imputed = imputer.transform()
-                    x_test_imputed.append(imputed)
+                    
+                    # 1. Prepare a fatia: de (224, 224, 1) para (1, 224, 224)
+                    fatia_input = x_test[i].transpose(2, 0, 1)
+                    
+                    # 2. Prepare a máscara: garanta que tenha o canal (1, 224, 224)
+                    # Se missing_mask_test[i] for (224, 224), use np.expand_dims
+                    fatia_mask = missing_mask_test[i]
+                    if fatia_mask.ndim == 2:
+                        fatia_mask = fatia_mask[np.newaxis, ...]
+                    elif fatia_mask.shape[-1] == 1: # Caso seja (224, 224, 1)
+                        fatia_mask = fatia_mask.transpose(2, 0, 1)
+
+                    # 3. Executa o Fit e Transform
+                    imputer.fit(x_train=fatia_input, mask_train=(1 - fatia_mask))
+                    imputed = imputer.transform() # Retorna (1, 224, 224)
+                    
+                    # 4. Volta para o shape (224, 224, 1) antes de guardar
+                    imputed_hwc = imputed.transpose(1, 2, 0)
+                    x_test_imputed_list.append(imputed_hwc)
                 
-                x_test_imputed = np.array(x_test_imputed)
+                # Converte para array final: (82, 224, 224, 1)
+                x_test_imputed = np.array(x_test_imputed_list)
             else:
                 x_test_imputed = imputer.transform(x_test_md)
           
@@ -174,7 +192,7 @@ def run_experimental_design(model_impt:str,
 
 if __name__ == "__main__":
     
-    dataset_names = ["inbreast"] 
+    dataset_names = ["inbreast","mias", "vindr-reduzido"] #"mias", "vindr-reduzido"
     tempo_total = {}
     for name in dataset_names:
         # Carregar as imagens
@@ -182,8 +200,8 @@ if __name__ == "__main__":
         inbreast_images, y_mapped, image_ids = data.load_data()
         
         
-        algorithms = ["dip"]
-        MD_MECHANISMS = "MNAR-RANDOM-SQUARES"
+        algorithms = ["mae-vit-gan"] #"diffusion", "knn", "mc", "vaewl", "dip", "mae-vit", "mae-vit-gan"
+        MD_MECHANISMS = "MNAR-SQUARES"
         
         for model_impt in algorithms:
                 init_time = perf_counter()
@@ -192,5 +210,5 @@ if __name__ == "__main__":
                 tempo_total[f"{model_impt}-{MD_MECHANISMS}"] = round(end_time-init_time, 2)
                 
                 res_tempo = pd.DataFrame({"Tempo": tempo_total})
-                res_tempo.to_csv("tempo.csv", index=False)
+                res_tempo.to_csv(f"./results/tempo_{name}_{model_impt}.csv", index=False)
                 

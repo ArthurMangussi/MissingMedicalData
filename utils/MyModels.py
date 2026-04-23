@@ -104,9 +104,11 @@ class DeepImagePrior:
         if device == "cuda":
             torch.backends.cudnn.enabled = True
             torch.backends.cudnn.benchmark = True
-            self.dtype = torch.cuda.FloatTensor
+            self.dtype = torch.float32  # Mude aqui
+            self.device_type = "cuda"
         else:
-            self.dtype = torch.FloatTensor
+            self.dtype = torch.float32
+            self.device_type = "cpu"
 
     def fit(self, x_train: np.ndarray, mask_train: np.ndarray):
         """
@@ -131,19 +133,13 @@ class DeepImagePrior:
         -------
         self
         """
-        x_train = x_train.squeeze(axis=-1)
-        
 
         # Ensure proper shape for processing
         if len(x_train.shape) == 2:
             x_train = np.expand_dims(x_train, axis=0)  # Add channel dimension
 
         if len(mask_train.shape) == 2:
-            mask_train = np.expand_dims(mask_train, axis=0)
-
-        if x_train.shape[0] == 1:
-            x_train = x_train[0]    # Result: (82, 224, 224)
-            mask_train = mask_train[0]
+            mask_train = np.expand_dims(mask_train, axis=-1)
 
         # Normalize if needed
         if x_train.max() > 1.0:
@@ -219,7 +215,7 @@ class DeepImagePrior:
         
         return self
 
-    def transform(self, x_test: np.ndarray = None, mask_test: np.ndarray = None) -> np.ndarray:
+    def transform(self) -> np.ndarray:
         """
         Apply the trained DIP network to generate the missing parts of the image.
         
@@ -449,7 +445,7 @@ class DiffusionInpainting:
                 width=image_pil.width,
                 mask_image=mask_pil,
                 num_inference_steps=num_inference_steps,
-                guidance_scale=7.5,
+                guidance_scale=15,
             )
 
         output_pil = output.images[0]
@@ -501,19 +497,17 @@ class ModelsImputation:
         # load model
         checkpoint = torch.load(chkpt_dir, map_location="cuda")
         msg = model.load_state_dict(checkpoint["model"], strict=False)
-        print(msg)
+        
         return model
 
     # ------------------------------------------------------------------------
     @staticmethod
     def model_dip(
         num_iter: int = 400,
-        learning_rate: float = 1e10,
+        learning_rate: float = 0.0000001,
         input_depth: int = 32,
         num_channels: int = 128,
         device: str = "cuda",
-        x_train: np.ndarray = None,
-        mask_train: np.ndarray = None,
     ):
         """
         Initialize a Deep Image Prior model with specified hyperparameters.
@@ -523,7 +517,7 @@ class ModelsImputation:
         num_iter : int, optional
             Number of optimization iterations. Default: 400
         learning_rate : float, optional
-            Learning rate for Adam optimizer. Default: 0.03
+            Learning rate for Adam optimizer. Default: 0.001
         input_depth : int, optional
             Number of input channels for noise. Default: 32
         num_channels : int, optional
@@ -589,41 +583,47 @@ class ModelsImputation:
         return mc
 
     @staticmethod
-    def mae_imputer_transform(model, x_test_md_np, missing_mask_test_np, missing_rate):
-        """
-        Adapta a lógica MAE para imputar o lote de teste x_test_md.
-        """
-        model.eval()  # Modo de avaliação (inferência)
-
-        # 1. Preparação dos Tensores
-        x = torch.tensor(x_test_md_np)
-        x = x.repeat(1, 1, 1, 3)  # Dados incompletos
-        if len(missing_mask_test_np.shape) == 3:
-            missing_mask_test_np = np.expand_dims(missing_mask_test_np, axis=-1)
-        mask_ext = torch.tensor(missing_mask_test_np)  # Máscara de ausência
-
-        x = x.float()  # MAE espera float32
+    def mae_imputer_transform(model, x_test_md_np, missing_mask_test_np):
+        model.eval()
+        
+        # A. Limpeza de NaNs
+        x_test_md_np = np.nan_to_num(x_test_md_np, nan=0.0)
+        
+        # B. Preparação (MAE espera 3 canais e tipicamente 224x224)
+        x = torch.from_numpy(x_test_md_np).float()
+        if x.shape[-1] == 1:
+            x = x.repeat(1, 1, 1, 3)
+        
         x = torch.einsum("nhwc->nchw", x)
-        mask_ext = mask_ext.float()
+        
+        # C. Normalização ImageNet (Crítico para evitar explosão de ativação)
+        mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
+        std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+        x = (x - mean) / std
+
+        mask_ext = torch.from_numpy(missing_mask_test_np).float()
+        if len(mask_ext.shape) == 3:
+            mask_ext = mask_ext.unsqueeze(-1)
         mask_ext = torch.einsum("nhwc->nchw", mask_ext)
 
-        # 3. Execução do MAE (Modo Imputação)
         with torch.no_grad():
-            loss, y_reconstructed, mask_int = model(x, mask_ratio=0.75)
 
-            # 4. Processamento da Reconstrução
+            loss, y_reconstructed, mask_int = model(x.to(next(model.parameters()).device), mask_ratio=0.05)
+
             y_recon = model.unpatchify(y_reconstructed)
+            
+            # Denormalização
+            y_recon = y_recon.cpu() * std + mean
 
-            # Transposição de volta para NHWC
-            y_recon_nhwc = torch.einsum("nchw->nhwc", y_recon).cpu().numpy()
-            x_nhwc = torch.einsum("nchw->nhwc", x).cpu().numpy()
-            mask_ext_nhwc = torch.einsum("nchw->nhwc", mask_ext).cpu().numpy()
+            y_recon_nhwc = torch.einsum("nchw->nhwc", y_recon).numpy()
+            x_nhwc = x_test_md_np 
 
-            imputed_image = x_nhwc * (1 - mask_ext_nhwc) + y_recon_nhwc * mask_ext_nhwc
-            imputed_image_gray = np.mean(imputed_image, axis=-1, keepdims=True)
+            # E. O MAE reconstrói a imagem TODA, mas você só quer os pixels da máscara
+            # Nota: mask_ext_nhwc deve ter o mesmo shape (H, W, 1)
+            imputed_image = x_nhwc * (1 - missing_mask_test_np[..., None]) + y_recon_nhwc[..., :1] * missing_mask_test_np[..., None]
 
-        return imputed_image_gray
-
+        return imputed_image
+    
     @staticmethod
     def diffusion_transform(
         model,
@@ -699,7 +699,7 @@ class ModelsImputation:
         x_train_md: np.ndarray = None,
         x_val_md: np.ndarray = None,
         x_val: np.ndarray = None,
-        missing_mask: np.ndarray = None,
+        
     ):
         match model:
 
@@ -734,7 +734,7 @@ class ModelsImputation:
 
             case "dip":
                 self._logger.info("[DIP] Initializing...")
-                return ModelsImputation.model_dip(x_train=x_train, mask_train=missing_mask, num_iter=1000)
+                return ModelsImputation.model_dip()
 
             case "diffusion":
                 self._logger.info("[Diffusion] Loading pipeline...")
