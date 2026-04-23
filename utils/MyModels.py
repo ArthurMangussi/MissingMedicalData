@@ -585,44 +585,49 @@ class ModelsImputation:
     @staticmethod
     def mae_imputer_transform(model, x_test_md_np, missing_mask_test_np):
         model.eval()
+        device = next(model.parameters()).device
         
-        # A. Limpeza de NaNs
-        x_test_md_np = np.nan_to_num(x_test_md_np, nan=0.0)
-        
-        # B. Preparação (MAE espera 3 canais e tipicamente 224x224)
-        x = torch.from_numpy(x_test_md_np).float()
-        if x.shape[-1] == 1:
-            x = x.repeat(1, 1, 1, 3)
-        
+        # 1. Preparação (NHWC -> NCHW e Imagem RGB)
+        x_limpo = np.nan_to_num(x_test_md_np, nan=0.0)
+        x = torch.from_numpy(x_limpo).float().to(device)
+        if x.shape[-1] == 1: x = x.repeat(1, 1, 1, 3)
         x = torch.einsum("nhwc->nchw", x)
         
-        # C. Normalização ImageNet (Crítico para evitar explosão de ativação)
-        mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
-        std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+        # 2. Normalização ImageNet
+        mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1).to(device)
+        std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1).to(device)
         x = (x - mean) / std
 
-        mask_ext = torch.from_numpy(missing_mask_test_np).float()
-        if len(mask_ext.shape) == 3:
-            mask_ext = mask_ext.unsqueeze(-1)
-        mask_ext = torch.einsum("nhwc->nchw", mask_ext)
+        # 3. Conversão da Máscara de Pixels para Patches (16x16)
+        m_pixel = torch.from_numpy(missing_mask_test_np).float().to(device)
+        if m_pixel.ndim == 3: m_pixel = m_pixel.unsqueeze(-1) # N, H, W, 1
+        m_pixel = torch.einsum("nhwc->nchw", m_pixel) # N, 1, H, W
+        
+        # Lógica para converter imagem de máscara em vetor de patches
+        p = 16
+        h = w = x.shape[2] // p
+        m_patch = m_pixel.reshape(shape=(x.shape[0], 1, h, p, w, p))
+        m_patch = torch.einsum('nchpwq->nhwpqc', m_patch)
+        m_patch = m_patch.reshape(shape=(x.shape[0], h * w, p**2))
+        m_patch = m_patch.max(dim=-1)[0] # Se houver um NaN no patch, mascara o patch todo (1)
 
         with torch.no_grad():
-
-            loss, y_reconstructed, mask_int = model(x.to(next(model.parameters()).device), mask_ratio=0.05)
-
-            y_recon = model.unpatchify(y_reconstructed)
+            # 4. CHAMA O NOVO FORWARD CUSTOMIZADO
+            # Usamos nossa função que respeita a máscara de NaNs
+            pred_patches = model.forward_inpainting(x, m_patch)
             
-            # Denormalização
-            y_recon = y_recon.cpu() * std + mean
-
-            y_recon_nhwc = torch.einsum("nchw->nhwc", y_recon).numpy()
-            x_nhwc = x_test_md_np 
-
-            # E. O MAE reconstrói a imagem TODA, mas você só quer os pixels da máscara
-            # Nota: mask_ext_nhwc deve ter o mesmo shape (H, W, 1)
-            imputed_image = x_nhwc * (1 - missing_mask_test_np[..., None]) + y_recon_nhwc[..., :1] * missing_mask_test_np[..., None]
+            # 5. Desfaz Patchify e Normalização
+            y_recon = model.unpatchify(pred_patches)
+            y_recon = y_recon * std + mean
+            
+            y_recon_np = torch.einsum("nchw->nhwc", y_recon).cpu().numpy()
+            
+        # 6. Composição Final
+        m_np = missing_mask_test_np[..., np.newaxis] if missing_mask_test_np.ndim == 3 else missing_mask_test_np
+        imputed_image = x_limpo * (1 - m_np) + y_recon_np[..., :1] * m_np
 
         return imputed_image
+    
     
     @staticmethod
     def diffusion_transform(

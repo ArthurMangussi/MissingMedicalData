@@ -200,7 +200,7 @@ if __name__ == "__main__":
         inbreast_images, y_mapped, image_ids = data.load_data()
         
         
-        algorithms = ["mae-vit-gan"] #"diffusion", "knn", "mc", "vaewl", "dip", "mae-vit", "mae-vit-gan"
+        algorithms = ["diffusion", "knn", "mc", "vaewl", "mae-vit", "mae-vit-gan","dip"] #"diffusion", "knn", "mc", "vaewl", "dip", "mae-vit", "mae-vit-gan"
         MD_MECHANISMS = "MNAR-SQUARES"
         
         for model_impt in algorithms:

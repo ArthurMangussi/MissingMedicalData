@@ -218,6 +218,61 @@ class MaskedAutoencoderViT(nn.Module):
         pred = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3]
         loss = self.forward_loss(imgs, pred, mask)
         return loss, pred, mask
+    
+    def custom_masking(self, x, mask_input):
+        """
+        x: [N, L, D]
+        mask_input: [N, L] - 0 para manter, 1 para remover (NaN)
+        """
+        N, L, D = x.shape
+        
+        # ids_shuffle: organiza para que os 0s (keep) venham primeiro
+        # Usamos argsort na máscara. Como 0 < 1, os pixels bons ficam no início.
+        ids_shuffle = torch.argsort(mask_input, dim=1)
+        ids_restore = torch.argsort(ids_shuffle, dim=1)
+
+        # Calcula quantos patches manter (aqueles que são 0 na máscara)
+        # Pegamos o máximo de patches 'bons' no batch para manter o tensor retangular
+        num_keep = L - int(mask_input.sum(dim=1).max().item())
+        
+        ids_keep = ids_shuffle[:, :num_keep]
+        x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
+
+        # Gerar a máscara binária final para o loss (opcional na inferência)
+        mask = mask_input
+
+        return x_masked, mask, ids_restore
+
+    def forward_encoder_inpainting(self, x, mask_input):
+        # embed patches
+        x = self.patch_embed(x)
+
+        # add pos embed w/o cls token
+        x = x + self.pos_embed[:, 1:, :]
+
+        # masking CUSTOMIZADO: usa a máscara de NaNs em vez de aleatória
+        x, mask, ids_restore = self.custom_masking(x, mask_input)
+
+        # append cls token
+        cls_token = self.cls_token + self.pos_embed[:, :1, :]
+        cls_tokens = cls_token.expand(x.shape[0], -1, -1)
+        x = torch.cat((cls_tokens, x), dim=1)
+
+        # apply Transformer blocks
+        for blk in self.blocks:
+            x = blk(x)
+        x = self.norm(x)
+
+        return x, mask, ids_restore
+
+    def forward_inpainting(self, imgs, mask_input):
+        """
+        imgs: [N, 3, H, W]
+        mask_input: [N, L] - Máscara de patches (1=NaN)
+        """
+        latent, mask, ids_restore = self.forward_encoder_inpainting(imgs, mask_input)
+        pred = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3]
+        return pred # Retorna a imagem reconstruída em patches
 
 
 def mae_vit_base_patch16_dec512d8b(**kwargs):
