@@ -408,7 +408,7 @@ class ImageDataAmputation:
         return x_data, x_data_md, missing_mask
 
     def generate_squares_mask(
-        self, x_data: np.ndarray, num_squares: int = 4, square_size: int = 5
+        self, x_data: np.ndarray, square_size: int = 5
     ) -> tuple:
         """
         Simulate rectangular occlusion artifacts (random square patches).
@@ -420,8 +420,6 @@ class ImageDataAmputation:
         ----------
         x_data : np.ndarray
             Input image (2D: H×W, 3D: H×W×C, or batch dimension allowed)
-        num_squares : int, optional
-            Number of square patches per image. Default: 4
         square_size : int, optional
             Side length of each square in pixels. Default: 5
 
@@ -443,25 +441,26 @@ class ImageDataAmputation:
         all_masks = []
 
         for i in range(N):
-            image_2d = x_data[i, :, :, 0]
-            # Criamos a máscara de onde existe imagem (foreground)
-            foreground_mask = (image_2d > 0).astype(np.float32)
-            
             mask_2d = np.zeros((H, W), dtype=np.float32)
-            valid_y, valid_x = np.where(image_2d > 0)
+            image_2d = x_data[i, :, :, 0]
+            foreground_mask = (image_2d > 0).astype(np.float32)
 
-            rng = np.random.default_rng(seed=i)
+            # 1. Calcular o centro exato da imagem
+            center_h, center_w = H // 2, W // 2
+            
+            # 2. Calcular o ponto inicial (topo-esquerda) para que o quadrado fique no meio
+            # Subtraímos metade do square_size
+            r = max(0, center_h - (square_size // 2))
+            c = max(0, center_w - (square_size // 2))
+            
+            # 3. Definir o ponto final
+            r_end = min(r + square_size, H)
+            c_end = min(c + square_size, W)
+            
+            # 4. Aplicar na máscara
+            mask_2d[r:r_end, c:c_end] = 1
 
-            for _ in range(num_squares):
-                if len(valid_y) == 0:
-                    break
-                rand_idx = rng.integers(0, len(valid_y))
-                r, c = valid_y[rand_idx], valid_x[rand_idx]
-                
-                # Desenha o quadrado
-                r_end, c_end = min(r + square_size, H), min(c + square_size, W)
-                mask_2d[r:r_end, c:c_end] = 1
-
+            # Multiplica pela máscara do foreground para garantir que o NaN não caia no fundo preto
             mask_2d = mask_2d * foreground_mask
             all_masks.append(mask_2d)
 

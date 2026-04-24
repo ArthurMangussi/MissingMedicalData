@@ -628,7 +628,7 @@ class ModelsImputation:
 
         return imputed_image
     
-    
+
     @staticmethod
     def diffusion_transform(
         model,

@@ -57,9 +57,9 @@ def run_experimental_design(model_impt:str,
 
         amputation = ImageDataAmputation()
         
-        x_train, x_train_md, _ = amputation.generate_squares_mask(x_train, square_size=50, num_squares=2)
-        x_val, x_val_md, _ = amputation.generate_squares_mask(x_val, square_size=50, num_squares=2)
-        x_test, x_test_md, missing_mask_test = amputation.generate_squares_mask(x_test, square_size=50, num_squares=2)
+        x_train, x_train_md, _ = amputation.generate_squares_mask(x_train, square_size=30)
+        x_val, x_val_md, _ = amputation.generate_squares_mask(x_val, square_size=30)
+        x_test, x_test_md, missing_mask_test = amputation.generate_squares_mask(x_test, square_size=30)
 
 
         model = ModelsImputation()
@@ -87,7 +87,7 @@ def run_experimental_design(model_impt:str,
                                                        x_test_md_np=x_test_md,
                                                        missing_mask_test_np=missing_mask_test,
                                                        prompt=prompt,
-                                                       num_inference_steps=50)
+                                                       num_inference_steps=100)
         else:
             # DIP, KNN, MICE, etc.
             if model_impt == "dip":
@@ -192,7 +192,7 @@ def run_experimental_design(model_impt:str,
 
 if __name__ == "__main__":
     
-    dataset_names = ["inbreast","mias", "vindr-reduzido"] #"mias", "vindr-reduzido"
+    dataset_names = ["inbreast", "mias", "vindr-reduzido"] #
     tempo_total = {}
     for name in dataset_names:
         # Carregar as imagens
@@ -200,7 +200,7 @@ if __name__ == "__main__":
         inbreast_images, y_mapped, image_ids = data.load_data()
         
         
-        algorithms = ["diffusion", "knn", "mc", "vaewl", "mae-vit", "mae-vit-gan","dip"] #"diffusion", "knn", "mc", "vaewl", "dip", "mae-vit", "mae-vit-gan"
+        algorithms = ["knn", "mc", "mae-vit", "mae-vit-gan", "diffusion"] 
         MD_MECHANISMS = "MNAR-SQUARES"
         
         for model_impt in algorithms:
