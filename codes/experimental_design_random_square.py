@@ -44,7 +44,7 @@ def run_experimental_design(model_impt:str,
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
     
     for fold, (train_val_idx, test_idx) in enumerate(skf.split(images, labels)):
-        _logger.info(f"\n[Fold {fold + 1}/5]")
+        _logger.info(f"\n[Fold {fold + 1}/5] - {name}")
 
         x_train_val, x_test = images[train_val_idx], images[test_idx]
         y_train_val, _ = labels[train_val_idx], labels[test_idx]
@@ -87,36 +87,37 @@ def run_experimental_design(model_impt:str,
                                                        x_test_md_np=x_test_md,
                                                        missing_mask_test_np=missing_mask_test,
                                                        prompt=prompt,
-                                                       num_inference_steps=100)
+                                                       num_inference_steps=150)
         else:
             # DIP, KNN, MICE, etc.
             if model_impt == "dip":
-                x_test_imputed_list = []
+                batch_size = 16  # Ajuste conforme a memória da sua GPU
+                x_test_imputed_all = []
                 
-                for i in range(x_test_md.shape[0]):
-                    _logger.info(f"DIP: Imputing Image {i+1} of {x_test_md.shape[0]}")
+                x_test_md = x_test.squeeze(-1)  # Remove a dimensão de canal se for (N, H, W, 1) -> (N, H, W)
+                for i in range(0, len(x_test_md), batch_size):
+                    _logger.info(f"DIP: Processando lote {i//batch_size + 1}/{(len(x_test_md) + batch_size - 1) // batch_size}")
                     
-                    # 1. Prepare a fatia: de (224, 224, 1) para (1, 224, 224)
-                    fatia_input = x_test[i].transpose(2, 0, 1)
+                    # Seleciona o lote atual
+                    batch_x = x_test_md[i : i + batch_size]
+                    batch_m = missing_mask_test[i : i + batch_size]
                     
-                    # 2. Prepare a máscara: garanta que tenha o canal (1, 224, 224)
-                    # Se missing_mask_test[i] for (224, 224), use np.expand_dims
-                    fatia_mask = missing_mask_test[i]
-                    if fatia_mask.ndim == 2:
-                        fatia_mask = fatia_mask[np.newaxis, ...]
-                    elif fatia_mask.shape[-1] == 1: # Caso seja (224, 224, 1)
-                        fatia_mask = fatia_mask.transpose(2, 0, 1)
+                    batch_x = np.expand_dims(batch_x, axis=-1)
+                    batch_m = np.expand_dims(batch_m, axis=-1)
 
-                    # 3. Executa o Fit e Transform
-                    imputer.fit(x_train=fatia_input, mask_train=(1 - fatia_mask))
-                    imputed = imputer.transform() # Retorna (1, 224, 224)
+                    # Transpose para (N, C, H, W)
+                    batch_x_torch = batch_x.transpose(0, 3, 1, 2)
+                    batch_m_torch = batch_m.transpose(0, 3, 1, 2)
                     
-                    # 4. Volta para o shape (224, 224, 1) antes de guardar
-                    imputed_hwc = imputed.transpose(1, 2, 0)
-                    x_test_imputed_list.append(imputed_hwc)
-                
-                # Converte para array final: (82, 224, 224, 1)
-                x_test_imputed = np.array(x_test_imputed_list)
+                    # Executa o DIP no lote todo de uma vez
+                    # fit_and_transform agora faz o trabalho pesado
+                    imputed_batch = imputer.fit_and_transform(batch_x_torch, batch_m_torch)
+                    
+                    # Transpose de volta para (N, H, W, C) e guarda
+                    x_test_imputed_all.append(imputed_batch.transpose(0, 2, 3, 1))
+
+                # Junta tudo no array final (3000, 224, 224, 1)
+                x_test_imputed = np.concatenate(x_test_imputed_all, axis=0)
             else:
                 x_test_imputed = imputer.transform(x_test_md)
           
@@ -133,7 +134,7 @@ def run_experimental_design(model_impt:str,
         # Handle multi-channel images by averaging across channels
         missing_mask_test_binary = missing_mask_test.astype(bool)
         if x_test_imputed.ndim == 4:  # If mask has channel dimension, reduce it
-            x_test_imputed = np.squeeze(x_test_imputed, axis=-1)  # Reduce to (N, H, W)
+            x_test_imputed = np.squeeze(x_test_imputed, axis=-1)
 
         # Extract only missing pixels from both images
         x_imputed_missing = x_test_imputed[missing_mask_test_binary]
@@ -148,6 +149,12 @@ def run_experimental_design(model_impt:str,
             psnr_values = []
             ssim_values = []
             for c in range(x_test.shape[0]):
+                num_pixels_missing = missing_mask_test_binary[c].sum()
+    
+                if num_pixels_missing == 0:
+                    print(f"Pulo na imagem {c}: O artefato caiu fora do tecido mamário.")
+                    continue
+                
                 psnr_c = peak_signal_noise_ratio(
                     x_test_imputed[c, missing_mask_test_binary[c]],
                     x_test[c, missing_mask_test_binary[c]].reshape(-1),
@@ -192,7 +199,7 @@ def run_experimental_design(model_impt:str,
 
 if __name__ == "__main__":
     
-    dataset_names = ["inbreast", "mias", "vindr-reduzido"] #
+    dataset_names = ["inbreast","mias","vindr-reduzido"] #
     tempo_total = {}
     for name in dataset_names:
         # Carregar as imagens
@@ -200,7 +207,7 @@ if __name__ == "__main__":
         inbreast_images, y_mapped, image_ids = data.load_data()
         
         
-        algorithms = ["knn", "mc", "mae-vit", "mae-vit-gan", "diffusion"] 
+        algorithms = ["dip"]  
         MD_MECHANISMS = "MNAR-SQUARES"
         
         for model_impt in algorithms:

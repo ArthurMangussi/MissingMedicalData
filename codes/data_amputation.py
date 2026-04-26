@@ -143,6 +143,77 @@ class ImageDataAmputation:
     # MAR: Missing At Random (depends on observed covariates)
     # ────────────────────────────────────────────────────────────────────────
 
+    def generate_squares_mask(
+        self, x_data: np.ndarray, square_size: int = 5
+    ) -> tuple:
+        """
+        Simulate rectangular occlusion artifacts (random square patches).
+
+        Places random square patches exclusively on foreground pixels.
+        Useful for modeling localized acquisition dropout or structured corruption.
+
+        Parameters
+        ----------
+        x_data : np.ndarray
+            Input image (2D: H×W, 3D: H×W×C, or batch dimension allowed)
+        square_size : int, optional
+            Side length of each square in pixels. Default: 5
+
+        Returns
+        -------
+        original : np.ndarray
+            Normalized image without any modifications
+        missing_data : np.ndarray
+            Image with square patches replaced by NaN
+        mask : np.ndarray
+            Binary mask (N, H, W) — 1 = missing, 0 = present
+        """
+        x_data, _, _ = self._normalize_and_prepare(x_data)
+
+        if x_data.ndim == 3:
+            x_data = np.expand_dims(x_data, axis=-1)
+
+        N, H, W, C = x_data.shape
+        all_masks = []
+
+        for i in range(N):
+            mask_2d = np.zeros((H, W), dtype=np.float32)
+            image_2d = x_data[i, :, :, 0]
+            foreground_mask = (image_2d > 0).astype(np.float32)
+
+            # 1. Calcular o centro exato da imagem
+            center_h, center_w = H // 2, W // 2
+            
+            # 2. Calcular o ponto inicial (topo-esquerda) para que o quadrado fique no meio
+            # Subtraímos metade do square_size
+            r = max(0, center_h - (square_size // 2))
+            c = max(0, center_w - (square_size // 2))
+            
+            # 3. Definir o ponto final
+            r_end = min(r + square_size, H)
+            c_end = min(c + square_size, W)
+            
+            # 4. Aplicar na máscara
+            mask_2d[r:r_end, c:c_end] = 1
+
+            # Multiplica pela máscara do foreground para garantir que o NaN não caia no fundo preto
+            mask_2d = mask_2d * foreground_mask
+            all_masks.append(mask_2d)
+
+        missing_mask_3d = np.stack(all_masks, axis=0)  # (N, H, W)
+        missing_mask_4d = np.repeat(
+            np.expand_dims(missing_mask_3d, axis=-1), C, axis=-1
+        ).astype(np.float32)
+
+        x_data_md = self._apply_mask(x_data, missing_mask_4d)
+
+        return x_data, x_data_md, missing_mask_3d
+    
+    
+    # ────────────────────────────────────────────────────────────────────────
+    # MNAR: Missing Not At Random (depends on unobserved data)
+    # ────────────────────────────────────────────────────────────────────────
+
     def generate_mar_stripes(
         self, x_data: np.ndarray, frac_bad_cols: float = 0.04, stripe_width: int = 1
     ) -> tuple:
@@ -200,82 +271,6 @@ class ImageDataAmputation:
 
         return x_data, x_data_md, missing_mask_limited
 
-    def generate_mar_truncation(
-        self,
-        x_data: np.ndarray,
-        side: str = "bottom",
-        frac: float = 0.20,
-        smooth_sigma: float = 5,
-    ) -> tuple:
-        """
-        Simulate field-of-view (FOV) truncation at image borders.
-
-        Models acquisition cutoff at image edges, common in limited-angle tomography.
-        Missingness depends on geometric position (distance from edge) — observed covariate.
-        Morphology: band with increasing probability toward the edge, smoothly tapered.
-
-        **Recommended for:**
-        - Limited-angle tomography
-        - FOV truncation
-        - Incomplete scan simulation
-
-        Parameters
-        ----------
-        x_data : np.ndarray
-            Input image (2D: H×W, 3D: H×W×C, or batch dimension allowed)
-        side : str, optional
-            Which edge to truncate: 'bottom' or 'right'. Default: 'bottom'
-        frac : float, optional
-            Fraction of image affected by truncation. Default: 0.08
-        smooth_sigma : float, optional
-            Gaussian smoothing sigma for soft transition. Default: 5
-
-        Returns
-        -------
-        original : np.ndarray
-            Normalized image without any modifications
-        missing_data : np.ndarray
-            Image with FOV truncation (NaN values at edges)
-        mask : np.ndarray
-            Binary mask (1 = missing, 0 = present)
-
-        Example
-        -------
-        >>> amputer = ImageDataAmputation(missing_rate=0.1)
-        >>> original, missing, mask = amputer.generate_mar_truncation(
-        ...     image, side='right', frac=0.1
-        ... )
-        """
-        x_data, foreground_mask, _ = self._normalize_and_prepare(x_data)
-        batch, height, width = x_data.shape[0], x_data.shape[1], x_data.shape[2]
-
-        missing_mask_2d = np.zeros((batch, height, width), dtype=np.float32)
-
-        for b in range(batch):
-            dist = np.zeros((height, width), dtype=np.float32)
-            if side == "bottom":
-                for i in range(height):
-                    dist[i, :] = max(0, i - (height * (1 - frac))) / (height * frac + 1e-6)
-            elif side == "right":
-                for j in range(width):
-                    dist[:, j] = max(0, j - (width * (1 - frac))) / (width * frac + 1e-6)
-
-            prob = np.clip(dist, 0, 1)
-            prob = gaussian_filter(prob, sigma=smooth_sigma)
-            missing_mask_2d[b] = np.random.binomial(1, prob).astype(np.float32)
-
-        # Limit to foreground
-        missing_mask_limited = missing_mask_2d * foreground_mask
-
-
-        x_data_md = self._apply_mask(x_data, missing_mask_limited)
-
-        return x_data, x_data_md, missing_mask_limited
-
-    
-    # ────────────────────────────────────────────────────────────────────────
-    # MNAR: Missing Not At Random (depends on unobserved data)
-    # ────────────────────────────────────────────────────────────────────────
 
     def generate_mnar_intensity(self, x_data: np.ndarray) -> tuple:
         """
@@ -407,71 +402,6 @@ class ImageDataAmputation:
 
         return x_data, x_data_md, missing_mask
 
-    def generate_squares_mask(
-        self, x_data: np.ndarray, square_size: int = 5
-    ) -> tuple:
-        """
-        Simulate rectangular occlusion artifacts (random square patches).
-
-        Places random square patches exclusively on foreground pixels.
-        Useful for modeling localized acquisition dropout or structured corruption.
-
-        Parameters
-        ----------
-        x_data : np.ndarray
-            Input image (2D: H×W, 3D: H×W×C, or batch dimension allowed)
-        square_size : int, optional
-            Side length of each square in pixels. Default: 5
-
-        Returns
-        -------
-        original : np.ndarray
-            Normalized image without any modifications
-        missing_data : np.ndarray
-            Image with square patches replaced by NaN
-        mask : np.ndarray
-            Binary mask (N, H, W) — 1 = missing, 0 = present
-        """
-        x_data, _, _ = self._normalize_and_prepare(x_data)
-
-        if x_data.ndim == 3:
-            x_data = np.expand_dims(x_data, axis=-1)
-
-        N, H, W, C = x_data.shape
-        all_masks = []
-
-        for i in range(N):
-            mask_2d = np.zeros((H, W), dtype=np.float32)
-            image_2d = x_data[i, :, :, 0]
-            foreground_mask = (image_2d > 0).astype(np.float32)
-
-            # 1. Calcular o centro exato da imagem
-            center_h, center_w = H // 2, W // 2
-            
-            # 2. Calcular o ponto inicial (topo-esquerda) para que o quadrado fique no meio
-            # Subtraímos metade do square_size
-            r = max(0, center_h - (square_size // 2))
-            c = max(0, center_w - (square_size // 2))
-            
-            # 3. Definir o ponto final
-            r_end = min(r + square_size, H)
-            c_end = min(c + square_size, W)
-            
-            # 4. Aplicar na máscara
-            mask_2d[r:r_end, c:c_end] = 1
-
-            # Multiplica pela máscara do foreground para garantir que o NaN não caia no fundo preto
-            mask_2d = mask_2d * foreground_mask
-            all_masks.append(mask_2d)
-
-        missing_mask_3d = np.stack(all_masks, axis=0)  # (N, H, W)
-        missing_mask_4d = np.repeat(
-            np.expand_dims(missing_mask_3d, axis=-1), C, axis=-1
-        ).astype(np.float32)
-
-        x_data_md = self._apply_mask(x_data, missing_mask_4d)
-
-        return x_data, x_data_md, missing_mask_3d
     
     def generate_mnar_low_snr(
         self,

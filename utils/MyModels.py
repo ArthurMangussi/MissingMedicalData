@@ -46,220 +46,60 @@ warnings.filterwarnings("ignore")
 
 
 class DeepImagePrior:
-    """
-    Deep Image Prior (DIP) for image imputation using untrained neural networks.
-
-    The DIP approach leverages the implicit regularization of an untrained convolutional
-    network architecture to perform image restoration tasks, including inpainting/imputation
-    of missing pixels. The network learns to reconstruct only the observed pixels.
-
-    Reference: https://github.com/DmitryUlyanov/deep-image-prior
-    """
-
-    def __init__(
-        self,
-        device: str = "cuda",
-        num_iter: int = 400,
-        learning_rate: float = 0.03,
-        input_depth: int = 32,
-        num_channels: int = 128,
-        pad: str = "reflection",
-        reg_noise_std: float = 0.03,
-        show_every: int = 50,
-    ):
-        """
-        Initialize Deep Image Prior model.
-
-        Parameters
-        ----------
-        device : str, optional
-            Device to use ('cuda' or 'cpu'). Default: 'cuda'
-        num_iter : int, optional
-            Number of optimization iterations. Default: 400
-        learning_rate : float, optional
-            Learning rate for Adam optimizer. Default: 0.03
-        input_depth : int, optional
-            Number of input channels for noise. Default: 32
-        num_channels : int, optional
-            Number of channels in skip network. Default: 128
-        pad : str, optional
-            Padding mode ('zero' or 'reflection'). Default: 'reflection'
-        reg_noise_std : float, optional
-            Standard deviation of regularization noise. Default: 0.03
-        show_every : int, optional
-            Print loss every N iterations. Default: 50
-        """
+    def __init__(self, device="cuda", num_iter=150, learning_rate=0.00001, input_depth=32, num_channels=128):
         self.device = device
         self.num_iter = num_iter
         self.learning_rate = learning_rate
         self.input_depth = input_depth
         self.num_channels = num_channels
-        self.pad = pad
-        self.reg_noise_std = reg_noise_std
-        self.show_every = show_every
         self.net = None
-        self.losses = []
 
-        # Set torch device
-        if device == "cuda":
-            torch.backends.cudnn.enabled = True
-            torch.backends.cudnn.benchmark = True
-            self.dtype = torch.float32  # Mude aqui
-            self.device_type = "cuda"
-        else:
-            self.dtype = torch.float32
-            self.device_type = "cpu"
-
-    def fit(self, x_train: np.ndarray, mask_train: np.ndarray):
+    def fit_and_transform(self, x_batch, mask_batch):
         """
-        Train DIP network on image with missing pixels. 
+        x_batch: (N, 1, 224, 224) - Lote de imagens [0, 1]
+        mask_batch: (N, 1, 224, 224) - 1 para missing, 0 para conhecido
+        """
+        N, C, H, W = x_batch.shape
         
-        Training Strategy:
-        DIP uses an untrained convolutional network as an implicit prior. The network 
-        is optimized to map a fixed random noise tensor to the observed (non-missing) 
-        pixels of the corrupted image. Gradient descent is used to minimize the MSE 
-        loss only on the known pixels.
+        # Inverte a máscara: 1 para o que conhecemos (tecido), 0 para o buraco
+        obs_mask = torch.from_numpy(1 - mask_batch).to(self.device).float()
+        img_var = torch.from_numpy(x_batch).to(self.device).float()
 
-        Parameters
-        ----------
-        x_train : np.ndarray
-            Image with missing pixels (should be normalized to [0,1] or uint8).
-            Shape: (H, W) or (C, H, W)
-        mask_train : np.ndarray
-            Binary mask indicating missing pixels (1 = missing, 0 = present).
-            Shape must match x_train
-            
-        Returns
-        -------
-        self
-        """
-
-        # Ensure proper shape for processing
-        if len(x_train.shape) == 2:
-            x_train = np.expand_dims(x_train, axis=0)  # Add channel dimension
-
-        if len(mask_train.shape) == 2:
-            mask_train = np.expand_dims(mask_train, axis=-1)
-
-        # Normalize if needed
-        if x_train.max() > 1.0:
-            x_train = x_train.astype(np.float32) / 255.0
-
-        # Align mask spatial dims to image (center-crop if mask is larger)
-        tH, tW = x_train.shape[-2], x_train.shape[-1]
-        mH, mW = mask_train.shape[-2], mask_train.shape[-1]
-        if mH != tH or mW != tW:
-            dH = (mH - tH) // 2
-            dW = (mW - tW) // 2
-            mask_train = mask_train[..., dH:dH + tH, dW:dW + tW]
-
-        # Prepare network and input
-        num_channels = x_train.shape[0]
-        spatial_size = x_train.shape[1:]
-
-        # Build skip network
+        # Build network (Simplificada para 3 níveis para ser + rápido)
         self.net = dip.skip(
             num_input_channels=self.input_depth,
-            num_output_channels=num_channels,
-            num_channels_down=[self.num_channels] * 5,
-            num_channels_up=[self.num_channels] * 5,
-            num_channels_skip=[self.num_channels] * 5,
-            filter_size_up=3,
-            filter_size_down=3,
-            upsample_mode="nearest",
-            filter_skip_size=1,
-            need_sigmoid=True,
-            need_bias=True,
-            pad=self.pad,
-            act_fun="LeakyReLU",
-        ).type(self.dtype)
+            num_output_channels=C,
+            num_channels_down=[self.num_channels] * 3,
+            num_channels_up=[self.num_channels] * 3,
+            num_channels_skip=[4] * 3,
+            filter_size_up=3, filter_size_down=3,
+            need_sigmoid=True, pad='reflection'
+        ).to(self.device)
 
-        # Generate noise input
-        net_input = dip.get_noise(self.input_depth, "noise", spatial_size).type(
-            self.dtype
-        )
-
-        # Convert to torch tensors
-        img_var = dip.np_to_torch(x_train).type(self.dtype)
-        mask_var = dip.np_to_torch(mask_train).type(self.dtype)
-
-        # Loss function
-        mse = torch.nn.MSELoss().type(self.dtype)
-
-        # Save original input for regularization
-        self._net_input_saved = net_input.detach().clone()
-        noise = net_input.detach().clone()
-
-        # Optimization parameters
-        params = dip.get_params("net", self.net, net_input)
-
-        # Define closure for optimization
-        def closure():
-            if self.reg_noise_std > 0:
-                net_input_current = self._net_input_saved + (
-                    noise.normal_() * self.reg_noise_std
-                )
-            else:
-                net_input_current = self._net_input_saved
-
-            out = self.net(net_input_current)
-
-            # Compute loss only on observed pixels
-            total_loss = mse(out * mask_var, img_var * mask_var)
-            total_loss.backward()
-
-            return total_loss
-
-        # Run optimization
-        dip.optimize("adam", params, closure, self.learning_rate, self.num_iter)
+        # Entrada de ruído fixa para o batch
+        net_input = dip.get_noise(self.input_depth, "noise", (H, W), batch_size=N).to(self.device)
         
-        return self
-
-    def transform(self) -> np.ndarray:
-        """
-        Apply the trained DIP network to generate the missing parts of the image.
+        optimizer = torch.optim.Adam(self.net.parameters(), lr=self.learning_rate)
         
-        Returns
-        -------
-        imputed_image : np.ndarray
-            Reconstructed image with missing pixels filled.
-        """
-        if self.net is None or getattr(self, "_net_input_saved", None) is None:
-            raise ValueError("The model must be fitted before calling transform.")
+        # Loop de otimização do Lote
+        for i in range(self.num_iter):
+            print(f"DIP: Iteração {i+1}/{self.num_iter}", end="\r")
+            optimizer.zero_grad()
+            out = self.net(net_input)
             
-        # Get final reconstruction
+            # Loss apenas nos pixels conhecidos de TODAS as imagens do batch
+            loss = torch.nn.functional.mse_loss(out * obs_mask, img_var * obs_mask)
+            loss.backward()
+            optimizer.step()
+
         with torch.no_grad():
-            reconstructed = self.net(self._net_input_saved).detach()
-
-        imputed_np = dip.torch_to_np(reconstructed)
-
-        # Clean up GPU memory
-        torch.cuda.empty_cache()
-
-        return imputed_np
-
-    def fit_transform(
-        self,
-        x_train: np.ndarray,
-        mask_train: np.ndarray,
-    ) -> np.ndarray:
-        """
-        Train DIP network on image with missing pixels and return the imputed image.
+            full_reconstruction = self.net(net_input).detach().cpu().numpy()
         
-        Parameters
-        ----------
-        x_train : np.ndarray
-            Image with missing pixels.
-        mask_train : np.ndarray
-            Binary mask indicating missing pixels.
-            
-        Returns
-        -------
-        imputed_image : np.ndarray
-            Reconstructed image.
-        """
-        self.fit(x_train, mask_train)
-        return self.transform()
+        # Limpa memória
+        del self.net
+        torch.cuda.empty_cache()
+        
+        return full_reconstruction
 
 
 class DiffusionInpainting:
@@ -469,14 +309,14 @@ class ModelsImputation:
 
         vae_wl_config = ConfigVAE()
         vae_wl_config.verbose = 1
-        vae_wl_config.epochs = 100
+        vae_wl_config.epochs = 150
         vae_wl_config.filters = [16, 32]
         vae_wl_config.kernels = 1
         vae_wl_config.neurons = [392, 196]
         vae_wl_config.dropout = [0.2, 0.2]
         vae_wl_config.latent_dimension = 16
-        vae_wl_config.batch_size = 16
-        vae_wl_config.learning_rate = 0.0005
+        vae_wl_config.batch_size = 32
+        vae_wl_config.learning_rate = 0.001
         vae_wl_config.activation = "relu"
         vae_wl_config.output_activation = "sigmoid"
         vae_wl_config.loss = tf.keras.losses.binary_crossentropy
@@ -503,8 +343,8 @@ class ModelsImputation:
     # ------------------------------------------------------------------------
     @staticmethod
     def model_dip(
-        num_iter: int = 400,
-        learning_rate: float = 0.0000001,
+        num_iter: int = 4000,
+        learning_rate: float = 0.001,
         input_depth: int = 32,
         num_channels: int = 128,
         device: str = "cuda",
