@@ -38,18 +38,15 @@ class KNNWrapper:
         imputed_images : np.ndarray
             Imputed images with same shape as input
         """
-        # Store original shape to restore later
-        original_shape = images_with_mv_test.shape
-        batch_size = original_shape[0]
+        images_with_mv_test = np.squeeze(images_with_mv_test)  
 
-        # Flatten all dimensions except batch: (N, ...) -> (N, -1)
-        images_flat = images_with_mv_test.reshape((batch_size, -1))
-
-        # Impute the flattened data
-        imputed_flat = self.imputer.fit_transform(images_flat)
-
-        # Restore original shape
-        imputed_images = imputed_flat.reshape(original_shape)
+        imputed_images = []
+        for k in range(images_with_mv_test.shape[0]):
+            if(k%100 == 0):
+                print("KNN: Imputing Image " + str(k) + " of " + str(images_with_mv_test.shape[0]))
+            test_image = np.reshape(images_with_mv_test[k],(images_with_mv_test.shape[1],images_with_mv_test.shape[2]))
+            imputed_image = self.imputer.fit_transform(test_image)
+            imputed_images.append(imputed_image)
 
         return np.array(imputed_images)
 

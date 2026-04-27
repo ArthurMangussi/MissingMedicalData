@@ -214,7 +214,7 @@ class ImageDataAmputation:
     # MNAR: Missing Not At Random (depends on unobserved data)
     # ────────────────────────────────────────────────────────────────────────
 
-    def generate_mar_stripes(
+    def generate_stripes(
         self, x_data: np.ndarray, frac_bad_cols: float = 0.04, stripe_width: int = 1
     ) -> tuple:
         """

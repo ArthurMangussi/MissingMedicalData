@@ -1,139 +1,22 @@
 import pandas as pd
-import numpy as np
 
 datasets = ["inbreast", "mias", "vindr-reduzido"]
-MD_MECHANISM = ["MCAR", "MNAR", "SQUARE"]
-MISSING_RATE = [0.05, 0.10, 0.20, 0.3, 0.4, 0.5]
-imputers = ["knn", "mc", "mice", "vaewl","mae-vit-gan", "mae-vit"]
+MD_MECHANISM = ["MNAR-SQUARES"]
+imputers = ["knn", "mc", "dip", "vaewl","mae-vit-gan", "mae-vit", "diffusion"]
 
 results = []
 for dataset in datasets:
   for md in MD_MECHANISM:
     for imputer in imputers:
-      for mr in MISSING_RATE:
-        if md == "SQUARE":
-            mr = 0.05
-        else:
-            mr = mr
-            df = pd.read_csv(f"{dataset}_{imputer}_{md}_{mr}_results.csv")
-            df["DATASET"] = dataset
-            df["ALGORITHS"] = imputer
-            df["MD_MECHANISM"] = md
-            df["MISSING_RATE"] = f"mr{mr}"
-            results.append(df)
+        df = pd.read_csv(f"/home/gpu-10-2025/Área de trabalho/MissingMedicalData/results/{imputer}/{dataset}_{imputer}_{md}_results.csv")
+        df["DATASET"] = dataset
+        df["ALGORITHS"] = imputer
+        df["MD_MECHANISM"] = md
+        results.append(df)
 
 df_results = pd.concat(results).rename(columns={"Unnamed: 0":"fold"})
-df_results["MISSING_RATE"] = df_results["MISSING_RATE"].map({"mr0.05": "5%",
-                                             "mr0.1":"10%",
-                                             "mr0.2":"20%",
-                                              "mr0.3":"30%",
-                                                             "mr0.4":"40%",
-                                                             "mr0.5":"50%",})
+df_results.to_csv("results.csv", index=False)
 
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-# 1. Carregar os dados (tratando o cabeçalho complexo manualmente)
-df_raw = pd.read_excel('classificação.xlsx')
-
-metrics = ['ACC', 'AUC_ROC', 'F1']
-datasets = ['INBreast', 'MIAS', 'VinDR-mammo']
-records = []
-
-# 2. Extrair o Baseline (que está na linha de índice 2 do CSV original)
-baseline_row = df_raw.iloc[2]
-for i in range(2, 11):
-    metric = metrics[(i-2) // 3]
-    dataset = datasets[(i-2) % 3]
-    val_str = str(baseline_row[i])
-    if '±' in val_str:
-        mean_val = float(val_str.split('±')[0].strip())
-        records.append({
-            'Missing Rate': 0.0,
-            'Method': 'BASELINE',
-            'Metric': metric,
-            'Dataset': dataset,
-            'Value': mean_val
-        })
-
-# 3. Extrair os dados de Inpainting (começam na linha de índice 4)
-current_mr = None
-for idx in range(4, len(df_raw)):
-    row = df_raw.iloc[idx]
-
-    # Atualiza o Missing Rate atual quando encontra um novo valor na coluna 0
-    mr_cell = str(row[0])
-    if mr_cell != 'nan' and mr_cell != 'Missing Rate':
-        try:
-            current_mr = float(mr_cell)
-        except ValueError:
-            pass
-
-    method = str(row[1])
-    if method == 'nan' or method == 'Inpainting Methods':
-        continue
-
-    for i in range(2, 11):
-        metric = metrics[(i-2) // 3]
-        dataset = datasets[(i-2) % 3]
-        val_str = str(row[i])
-        if '±' in val_str:
-            try:
-                mean_val = float(val_str.split('±')[0].strip())
-                records.append({
-                    'Missing Rate': current_mr,
-                    'Method': method,
-                    'Metric': metric,
-                    'Dataset': dataset,
-                    'Value': mean_val
-                })
-            except ValueError:
-                continue
-
-# Criar DataFrame limpo
-df_all = pd.DataFrame(records)
-
-# 4. Agrupar por Missing Rate (calculando a média entre os diferentes métodos de inpainting)
-df_summary = df_all.groupby(['Missing Rate', 'Metric', 'Dataset'])['Value'].mean().reset_index()
-
-# 5. Gerar Visualização
-fig, axes = plt.subplots(3, 1, figsize=(10, 15))
-
-for i, metric in enumerate(metrics):
-    ax = axes[i]
-    data_metric = df_summary[df_summary['Metric'] == metric]
-
-    if metric == "ACC":
-      baseline_value_inbreast = 0.7781
-      baseline_value_mias = 0.6959
-      baseline_value_vindr = 0.5981
-    elif metric == "AUC-ROC":
-      baseline_value_inbreast = 0.7602
-      baseline_value_mias = 0.7098
-      baseline_value_vindr = 0.6675
-    else:
-      baseline_value_inbreast = 0.5705
-      baseline_value_mias = 0.4973
-      baseline_value_vindr = 0.5842
-
-    # Criar gráfico de barras com Missing Rate no eixo X
-    sns.barplot(data=data_metric, x='Missing Rate', y='Value', hue='Dataset', ax=ax)
-    ax.axhline(y=baseline_value_inbreast, color='red', linestyle='--', label='Baseline INBreast')
-    ax.axhline(y=baseline_value_mias, color='black', linestyle='--', label='Baseline Mias')
-    ax.axhline(y=baseline_value_vindr, color='purple', linestyle='--', label='Baseline VinDr-mammo')
-
-    ax.set_title(f'Classification Metric: {metric}', fontsize=14)
-    ax.set_ylabel('Average Metric', fontsize=12)
-    ax.set_xlabel('Missing Rate', fontsize=12)
-    ax.set_ylim(0, 0.8)
-    ax.legend(title='Dataset', bbox_to_anchor=(1, 1), loc='upper left')
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
-
-plt.savefig("classification.png", transparent=True, dpi=300,  bbox_inches='tight')
-
-import pandas as pd
-import numpy as np
 
 # O nome do arquivo CSV carregado é 'results.csv'
 FILE_PATH = "results.csv"
@@ -165,8 +48,8 @@ def create_pivot_table(file_path):
         print(f"Arquivo '{file_path}' carregado. Total de linhas: {len(df)}")
 
         # 2. Colunas de métricas e de agrupamento
-        metrics_cols = ['ACC', 'F1', 'AUC_ROC']
-        grouping_cols = ['DATASET', 'ALGORITHS','MISSING_RATE']
+        metrics_cols = ['PSNR', 'MAE', 'SSIM']
+        grouping_cols = ['DATASET', 'ALGORITHS']
 
         # 3. Converter colunas de métricas para tipo numérico
         for col in metrics_cols:
@@ -196,7 +79,7 @@ def create_pivot_table(file_path):
         # Colunas (cabeçalhos aninhados): DATASET, MD_MECHANISM (mecanismo), Métrica (MSE, PSNR, SSIM)
 
         pivot_table_df = formatted_df.pivot_table(
-            index=['MISSING_RATE', 'ALGORITHS'],
+            index=['ALGORITHS'],
             columns=['DATASET'],
             values=metrics_cols,
             # Mantém a ordem das colunas de métricas (MSE, PSNR, SSIM)
@@ -214,7 +97,7 @@ def create_pivot_table(file_path):
         # No entanto, para a visualização, o ideal é: Dataset -> Mecanismo -> Métrica
 
         # Apenas renomeamos o índice e mantemos a estrutura padrão para exportação fácil
-        pivot_table_df.index.names = ['Taxa de Missing', 'Método de Imputação']
+        pivot_table_df.index.names = ['Método de Imputação']
 
         print("\nTabela pivotada criada com sucesso.")
 
