@@ -424,6 +424,10 @@ class ModelsImputation:
 
     @staticmethod
     def mae_imputer_transform(model, x_test_md_np, missing_mask_test_np):
+        if x_test_md_np.ndim == 3:
+            x_test_md_np = np.expand_dims(x_test_md_np, axis=-1)
+            missing_mask_test_np = np.expand_dims(missing_mask_test_np, axis=-1)
+
         model.eval()
         device = next(model.parameters()).device
         

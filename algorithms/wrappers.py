@@ -38,7 +38,7 @@ class KNNWrapper:
         imputed_images : np.ndarray
             Imputed images with same shape as input
         """
-        images_with_mv_test = np.squeeze(images_with_mv_test)  
+        images_with_mv_test = np.expand_dims(images_with_mv_test, axis=-1) if images_with_mv_test.ndim == 3 else images_with_mv_test
 
         imputed_images = []
         for k in range(images_with_mv_test.shape[0]):

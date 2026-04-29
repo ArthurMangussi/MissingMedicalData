@@ -44,7 +44,7 @@ class ImageDataAmputation:
         x_data = x_data.astype("float32") / 255.0
 
         # Foreground mask: pixels with significant intensity
-        foreground_mask = np.any(x_data >= 0.0, axis=0)    
+        foreground_mask = np.any(x_data > 0.001, axis=0)    
 
         return x_data, foreground_mask, original_shape
 
@@ -255,21 +255,28 @@ class ImageDataAmputation:
         ... )
         """
         x_data, foreground_mask, _ = self._normalize_and_prepare(x_data)
-        batch, height, width = x_data.shape[0], x_data.shape[1], x_data.shape[2]
 
-        missing_mask_2d = np.zeros((batch, height, width), dtype=np.float32)
-        n_bad = max(1, int(frac_bad_cols * width))
-        bad_cols = np.random.choice(width, size=n_bad, replace=False)
+        if x_data.ndim == 3:
+            x_data = np.expand_dims(x_data, axis=-1)
+
+        foreground_mask = foreground_mask.astype(np.float32)
+        N, H, W, C = x_data.shape
+
+        missing_mask_3d = np.zeros((N, H, W), dtype=np.float32)
+        n_bad = max(1, int(frac_bad_cols * W))
+        bad_cols = np.random.choice(W, size=n_bad, replace=False)
 
         for c in bad_cols:
-            missing_mask_2d[:, :, c : c + stripe_width] = 1
+            missing_mask_3d[:, :, c : c + stripe_width] = 1
 
-        # Limit to foreground
-        missing_mask_limited = missing_mask_2d * foreground_mask
+        
+        missing_mask_4d = np.repeat(
+            np.expand_dims(missing_mask_3d, axis=-1), C, axis=-1
+        ).astype(np.float32)
 
-        x_data_md = self._apply_mask(x_data,missing_mask_limited)
+        x_data_md = self._apply_mask(x_data, missing_mask_4d)
 
-        return x_data, x_data_md, missing_mask_limited
+        return x_data, x_data_md, missing_mask_3d
 
 
     def generate_mnar_intensity(self, x_data: np.ndarray) -> tuple:
