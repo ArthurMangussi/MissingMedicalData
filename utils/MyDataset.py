@@ -3,11 +3,10 @@ import os
 import cv2
 import numpy as np
 import pandas as pd
-import pydicom
 
 import torch
 from torch.utils.data import Dataset
-from torchvision import transforms
+
 
 
 class Datasets:
@@ -18,12 +17,18 @@ class Datasets:
     def _load_cbis_ddsm_images(self):
         images = []
         filenames = []
+        labels = []
 
         data_dir = self.path + "/CBIS-DDSM"
         # Ordenar os arquivos para manter consistência
         files = sorted([f for f in os.listdir(data_dir) if f.endswith(".png")])
 
         for f in files:
+            if "calc" in f.lower():
+                labels.append(0)  # Benigno
+            elif "mass" in f.lower():
+                labels.append(1)  # Maligno
+            
             caminho_imagem = os.path.join(data_dir, f)
             imagem = cv2.imread(caminho_imagem, cv2.IMREAD_GRAYSCALE)
             if imagem is None:
@@ -34,7 +39,7 @@ class Datasets:
             images.append(imagem)
             filenames.append(f[:-4])  # mantém o nome completo como string
 
-        return np.array(images), filenames
+        return np.array(images), filenames, labels
 
     def _load_mias_images(self):
 
@@ -222,7 +227,8 @@ class Datasets:
                 return images, y_dict, filenames
 
             case "cbis-ddsm":
-                images, filenames = self._load_cbis_ddsm_images()
+                images, filenames, labels = self._load_cbis_ddsm_images()
+                return images, filenames, labels
 
 
 class CustomImageDataset(Dataset):

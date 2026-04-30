@@ -27,8 +27,7 @@ def run_experimental_design(
     model_impt: str,
     md_mechanism: str,
     images: np.ndarray,
-    labels_names: dict,
-    image_ids: list,
+    labels: list
 ):
     os.makedirs(f"./results/{model_impt}", exist_ok=True)
     _logger = MeLogger()
@@ -37,13 +36,7 @@ def run_experimental_design(
     results_psnr = {}
     results_ssim = {}
 
-    image_ids = np.array(image_ids)
-
-    if name == "inbreast":
-
-        labels = np.array([labels_names[i] for i in image_ids])
-    else:
-        labels = np.array(list(labels_names.values()))
+    labels = np.array(labels)  # Convertendo para numpy array para StratifiedKFold
 
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
@@ -53,7 +46,6 @@ def run_experimental_design(
         x_train_val, x_test = images[train_val_idx], images[test_idx]
         y_train_val, _ = labels[train_val_idx], labels[test_idx]
 
-        img_test_idx = image_ids[test_idx]
         # Divide treino e validação internamente (ex: 20% para validação)
         x_train, x_val, _, _ = train_test_split(
             x_train_val, y_train_val, test_size=0.2, random_state=fold
@@ -61,14 +53,14 @@ def run_experimental_design(
 
         amputation = ImageDataAmputation()
 
-        x_train, x_train_md, _ = amputation.generate_stripes(
-            x_train, frac_bad_cols=0.01, stripe_width=5
+        x_train, x_train_md, _ = amputation.generate_mcar_dead_pixels(
+            x_train, p_single=0.02, p_cluster=0.01, cluster_size=5
         )
-        x_val, x_val_md, _ = amputation.generate_stripes(
-            x_val, frac_bad_cols=0.01, stripe_width=5
+        x_val, x_val_md, _ = amputation.generate_mcar_dead_pixels(
+            x_val, p_single=0.02, p_cluster=0.01, cluster_size=5
         )
-        x_test, x_test_md, missing_mask_test = amputation.generate_stripes(
-            x_test, frac_bad_cols=0.01, stripe_width=5
+        x_test, x_test_md, missing_mask_test = amputation.generate_mcar_dead_pixels(
+            x_test, p_single=0.02, p_cluster=0.01, cluster_size=5
         )
 
         model = ModelsImputation()
@@ -96,8 +88,8 @@ def run_experimental_design(
             prompt = "Full-field digital mammography, high-quality breast parenchyma, no artifacts, no lesions, inpainting task."
             x_test_imputed = model.diffusion_transform(
                 model=imputer,
-                x_test_md_np=x_test_md,
-                missing_mask_test_np=missing_mask_test,
+                x_test_md_np=np.squeeze(x_test_md, axis=-1),
+                missing_mask_test_np=np.squeeze(missing_mask_test, axis=-1),
                 prompt=prompt,
                 num_inference_steps=150,
             )
@@ -107,9 +99,6 @@ def run_experimental_design(
                 batch_size = 16  # Ajuste conforme a memória da sua GPU
                 x_test_imputed_all = []
 
-                x_test_md = x_test.squeeze(
-                    -1
-                )  # Remove a dimensão de canal se for (N, H, W, 1) -> (N, H, W)
                 for i in range(0, len(x_test_md), batch_size):
                     _logger.info(
                         f"DIP: Processando lote {i//batch_size + 1}/{(len(x_test_md) + batch_size - 1) // batch_size}"
@@ -118,9 +107,6 @@ def run_experimental_design(
                     # Seleciona o lote atual
                     batch_x = x_test_md[i : i + batch_size]
                     batch_m = missing_mask_test[i : i + batch_size]
-
-                    batch_x = np.expand_dims(batch_x, axis=-1)
-                    batch_m = np.expand_dims(batch_m, axis=-1)
 
                     # Transpose para (N, C, H, W)
                     batch_x_torch = batch_x.transpose(0, 3, 1, 2)
@@ -141,13 +127,11 @@ def run_experimental_design(
                 x_test_imputed = imputer.transform(x_test_md)
 
         ## Save the reconstructed image
-        ut.save_image(
+        ut.save_image_cbis(
             mechanism=md_mechanism,
             images=x_test_imputed,
             fold=fold,
             model_impt=model_impt,
-            labels_names=labels_names,
-            image_ids=img_test_idx,
             dataset=name,
         )
 
@@ -156,6 +140,9 @@ def run_experimental_design(
         missing_mask_test_binary = missing_mask_test.astype(bool)
         if x_test_imputed.ndim == 4:  # If mask has channel dimension, reduce it
             x_test_imputed = np.squeeze(x_test_imputed, axis=-1)
+            missing_mask_test_binary = np.squeeze(missing_mask_test_binary, axis=-1)
+        elif x_test_imputed.ndim == 3:
+            missing_mask_test_binary = np.squeeze(missing_mask_test_binary, axis=-1)
 
         # Extract only missing pixels from both images
         x_imputed_missing = x_test_imputed[missing_mask_test_binary]
@@ -231,7 +218,7 @@ if __name__ == "__main__":
     for name in dataset_names:
         # Carregar as imagens
         data = Datasets(name)
-        inbreast_images, y_mapped, image_ids = data.load_data()
+        inbreast_images, _, labels = data.load_data()
 
         algorithms = ["vaewl"]
         MD_MECHANISMS = "MCAR"
@@ -239,7 +226,7 @@ if __name__ == "__main__":
         for model_impt in algorithms:
             init_time = perf_counter()
             run_experimental_design(
-                model_impt, MD_MECHANISMS, inbreast_images, y_mapped, image_ids
+                model_impt, MD_MECHANISMS, inbreast_images, labels
             )
             end_time = perf_counter()
             tempo_total[f"{model_impt}-{MD_MECHANISMS}"] = round(

@@ -118,23 +118,26 @@ class ImageDataAmputation:
         ... )
         """
         x_data, foreground_mask, _ = self._normalize_and_prepare(x_data)
-        batch, height, width = x_data.shape[0], x_data.shape[1], x_data.shape[2]
+        if x_data.ndim == 3:
+            x_data = np.expand_dims(x_data, axis=-1)
+
+        N, H, W, C = x_data.shape
 
         # Individual dead pixels
         missing_mask_2d = np.random.binomial(
-            1, p_single, size=(batch, height, width)
+            1, p_single, size=(N, H, W, C)
         ).astype(np.float32)
 
         # Clusters (small rectangles)
-        n_clusters = int(p_cluster * height * width)
+        n_clusters = int(p_cluster * H * W)
         for _ in range(n_clusters):
-            b = np.random.randint(0, batch)
-            r, c = np.random.randint(0, height), np.random.randint(0, width)
+            b = np.random.randint(0, N)
+            r, c = np.random.randint(0, H), np.random.randint(0, W)
             sz = np.random.randint(2, cluster_size + 1)
             missing_mask_2d[b, r : r + sz, c : c + sz] = 1
 
         # Limit to foreground
-        missing_mask_limited = missing_mask_2d * foreground_mask
+        missing_mask_limited = missing_mask_2d * np.expand_dims(foreground_mask, axis=-1)
         x_data_md = self._apply_mask(x_data, missing_mask_limited)
 
         return x_data, x_data_md, missing_mask_limited
