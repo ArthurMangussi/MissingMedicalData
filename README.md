@@ -1,6 +1,6 @@
 # Robustness Evaluation of Image Inpainting Techniques
 
-This repository provides the codebase for evaluating six image inpainting methods—**$\kappa$-Nearest Neighbors (kNN), Matrix Completion, Variational Autoencoder with Weighted Loss (VAE-WL), Masked Autoencoder Vision Transformer with GAN Loss (MAE-ViT+GAN), Deep Image Prior (DIP), MAM-E: Mammographic synthetic image generation with diffusion models, and Vision Language Model **—across three mammography datasets: INBreast, MIAS, and a stratified 1,000-image subset of VinDr-Mammo.
+This repository provides the codebase for evaluating six image inpainting methods—**$\kappa$-Nearest Neighbors (kNN), Matrix Completion, Variational Autoencoder with Weighted Loss (VAE-WL), Masked Autoencoder Vision Transformer (MAE-ViT), Deep Image Prior (DIP), and MAM-E: Mammographic synthetic image generation with diffusion models **—across mammography datasets: INBreast, MIAS, CBIS-DDSM, and a stratified 1,000-image subset of VinDr-Mammo.
 
 An example of inpainted images produced by the evaluated methods is shown below:
 
@@ -23,6 +23,47 @@ source env/bin/activate  # On Linux/macOS
 To install the required dependencies, run:
 ```bash 
 pip install -r requirements.txt
+pip install flask
+```
+
+## 🔬 Reproducing the Experiments
+
+To reproduce the results reported in the paper, run the following scripts according to each missingness mechanism:
+
+
+To reproduce the findings from paper, you must run:
+```bash
+python codes/experimental_design_dead_pixels.py   # MCAR
+python codes/experimental_random_square.py        # MAR
+python codes/experimental_design_stripes.py       # MNAR
+```
+After running all experiments, aggregate the results with:
+```bash
+codes/aux_codes.py 
+```
+
+## 🧠 MedInpainter: Open-Source Framework for Mammography Inpainting
+
+To promote reproducibility and support further research in mechanism-aware image inpainting, we introduce MedInpainter, an open-source framework designed for mammographic imaging.
+
+The framework provides:
+- Mapping to missingness mechanisms (MCAR, MAR, MNAR)
+- Standardized and reproducible evaluation protocols
+- Benchmarking support for inpainting methods 
+
+Run the application with:
+```bash 
+python app.py
+```
+
+## Contributing
+
+Contributions are welcome!
+If you find this project useful, consider giving it a ⭐ on GitHub.
+
+## Citation
+```bash
+To be updated soon.
 ```
 
 ## Acknowledgments

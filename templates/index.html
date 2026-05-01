@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MedInpainter — Medical Image Inpainting Framework</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/medinpainter.css') }}">
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-brand">
+      <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4.5 6.375a4.125 4.125 0 1 1 8.25 0 4.125 4.125 0 0 1-8.25 0ZM14.25 8.625a3.375 3.375 0 1 1 6.75 0 3.375 3.375 0 0 1-6.75 0ZM1.5 19.125a7.125 7.125 0 0 1 14.25 0v.003l-.001.119a.75.75 0 0 1-.363.63 13.067 13.067 0 0 1-6.761 1.873c-2.472 0-4.786-.684-6.76-1.873a.75.75 0 0 1-.364-.63l-.001-.122ZM17.25 19.128l-.001.144a2.25 2.25 0 0 1-.233.96 10.088 10.088 0 0 0 5.06-1.01.75.75 0 0 0 .42-.643 4.875 4.875 0 0 0-6.957-4.611 8.586 8.586 0 0 1 1.71 5.157v.003Z"/>
+      </svg>
+      <div>
+        <h1>MedInpainter</h1>
+        <span class="header-subtitle">Medical Image Inpainting Evaluation Framework</span>
+      </div>
+    </div>
+    <div class="header-status">
+      {% if amp_available %}
+      <span class="badge badge-green">&#10003; Backend Ready</span>
+      {% else %}
+      <span class="badge badge-yellow">&#9678; Demo Mode</span>
+      {% endif %}
+      <span class="badge badge-blue" id="feedback-count-badge" title="Total ratings saved">0 ratings</span>
+    </div>
+  </header>
+
+  <div class="app-layout">
+
+    <!-- Left Sidebar: Controls -->
+    <aside class="sidebar sidebar-left">
+
+      <div class="sidebar-section">
+        <p class="section-title">Dataset</p>
+        <select id="dataset-select" class="select-control">
+          {% for d in datasets %}
+          <option value="{{ d.value }}">{{ d.label }}</option>
+          {% endfor %}
+        </select>
+        <p id="dataset-desc" class="field-desc"></p>
+      </div>
+
+      <div class="sidebar-section">
+        <p class="section-title">Missing Mechanism</p>
+        <select id="mechanism-select" class="select-control">
+          {% for m in mechanisms %}
+          <option value="{{ m.value }}"
+                  data-category="{{ m.category }}"
+                  data-desc="{{ m.description }}"
+                  data-params='{{ m.params | tojson }}'>
+            {{ m.label }}
+          </option>
+          {% endfor %}
+        </select>
+        <p id="mechanism-desc" class="field-desc"></p>
+
+        <div id="params-container"></div>
+      </div>
+
+      <div class="sidebar-section">
+        <p class="section-title">Inpainting Algorithm</p>
+        <select id="algorithm-select" class="select-control">
+          {% for a in algorithms %}
+          <option value="{{ a.value }}" data-desc="{{ a.description }}">{{ a.label }}</option>
+          {% endfor %}
+        </select>
+        <p id="algorithm-desc" class="field-desc"></p>
+      </div>
+
+      <div class="sidebar-section">
+        <p class="section-title">Image</p>
+        <div class="seed-row">
+          <div class="seed-controls">
+            <button class="btn-icon" id="prev-seed" title="Previous image">&#9664;</button>
+            <input type="number" id="seed-input" class="seed-input" value="0" min="0" max="9999">
+            <button class="btn-icon" id="next-seed" title="Next image">&#9654;</button>
+          </div>
+          <span id="seed-label" class="field-desc" style="margin-top:4px;text-align:center;"></span>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <button id="generate-btn" class="btn-primary btn-full">
+          <span class="btn-text">Generate</span>
+          <span class="btn-spinner" hidden>
+            <span class="spinner"></span> Processing...
+          </span>
+        </button>
+      </div>
+
+      <div class="sidebar-section sidebar-info" id="system-info">
+        {% if not amp_available %}
+        <div class="info-box info-warning">
+          <strong>Demo Mode</strong><br>
+          Synthetic mammograms are shown. Check that dataset paths in <code>utils/MyDataset.py</code> are reachable.
+        </div>
+        {% endif %}
+        <div class="info-box info-note">
+          Demo inpainting uses OpenCV TELEA. Connect trained models via <code>utils/MyModels.py</code> for real evaluation.
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- Main Content: Image Display -->
+    <main class="main-content">
+
+      <div class="images-grid" id="images-grid">
+        <div class="image-card" id="card-original">
+          <div class="card-header">
+            <span class="card-label">Original</span>
+            <button class="card-download" data-card="original" title="Download" hidden>&#8659;</button>
+          </div>
+          <div class="card-body">
+            <div class="empty-placeholder">
+              <div class="empty-icon">&#128247;</div>
+              <div class="empty-text">Click Generate to start</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="image-card" id="card-corrupted">
+          <div class="card-header">
+            <span class="card-label">Corrupted</span>
+            <span class="card-sublabel">missing pixels &rarr; 0</span>
+            <button class="card-download" data-card="corrupted" title="Download" hidden>&#8659;</button>
+          </div>
+          <div class="card-body">
+            <div class="empty-placeholder"><div class="empty-text">—</div></div>
+          </div>
+        </div>
+
+        <div class="image-card" id="card-mask">
+          <div class="card-header">
+            <span class="card-label">Binary Mask</span>
+            <span class="card-sublabel">white = missing</span>
+            <button class="card-download" data-card="mask" title="Download" hidden>&#8659;</button>
+          </div>
+          <div class="card-body">
+            <div class="empty-placeholder"><div class="empty-text">—</div></div>
+          </div>
+        </div>
+
+        <div class="image-card" id="card-imputed">
+          <div class="card-header">
+            <span class="card-label">Imputed</span>
+            <span class="card-badge" id="algo-badge"></span>
+            <button class="card-download" data-card="imputed" title="Download" hidden>&#8659;</button>
+          </div>
+          <div class="card-body">
+            <div class="empty-placeholder"><div class="empty-text">—</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Metrics Bar -->
+      <div class="metrics-bar" id="metrics-bar" hidden>
+        <div class="metric">
+          <span class="metric-label">Missing pixels</span>
+          <span class="metric-value" id="m-missing">—</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">PSNR</span>
+          <span class="metric-value" id="m-psnr">—</span>
+          <span class="metric-unit">dB</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">SSIM</span>
+          <span class="metric-value" id="m-ssim">—</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">MAE</span>
+          <span class="metric-value" id="m-mae">—</span>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Right Sidebar: Feedback -->
+    <aside class="sidebar sidebar-right">
+
+      <div class="sidebar-section">
+        <p class="section-title">Rate This Result</p>
+
+        <div class="star-container">
+          <div class="star-rating" id="star-rating">
+            <button class="star" data-value="1" title="Poor">&#9733;</button>
+            <button class="star" data-value="2" title="Fair">&#9733;</button>
+            <button class="star" data-value="3" title="Good">&#9733;</button>
+            <button class="star" data-value="4" title="Very Good">&#9733;</button>
+            <button class="star" data-value="5" title="Excellent">&#9733;</button>
+          </div>
+          <p class="rating-label" id="rating-label">Generate a result first</p>
+        </div>
+
+        <textarea
+          id="feedback-notes"
+          class="feedback-textarea"
+          placeholder="Optional notes (e.g. 'Good texture reconstruction but artifact near lesion')..."
+          rows="4"
+          disabled
+        ></textarea>
+
+        <button id="save-feedback-btn" class="btn-success btn-full" disabled>
+          Save Feedback
+        </button>
+
+        <div class="feedback-toast" id="feedback-toast" hidden>
+          &#10003; Feedback saved successfully
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <p class="section-title">
+          Feedback History
+          <span class="history-badge" id="history-badge">0</span>
+          <button class="btn-export" id="export-btn" title="Export as CSV" hidden>Export CSV</button>
+        </p>
+        <div id="feedback-history" class="history-list">
+          <div class="empty-state-small">No feedback saved yet</div>
+        </div>
+      </div>
+
+    </aside>
+  </div>
+
+  <!-- Config passed to JS -->
+  <script>
+    window.MEDINPAINTER = {
+      datasets:   {{ datasets   | tojson }},
+      algorithms: {{ algorithms | tojson }},
+      mechanisms: {{ mechanisms | tojson }},
+    };
+  </script>
+  <script src="{{ url_for('static', filename='js/medinpainter.js') }}"></script>
+</body>
+</html>
