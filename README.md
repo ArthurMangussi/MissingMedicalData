@@ -23,6 +23,47 @@ source env/bin/activate  # On Linux/macOS
 To install the required dependencies, run:
 ```bash 
 pip install -r requirements.txt
+pip install flask
+```
+
+## 🔬 Reproducing the Experiments
+
+To reproduce the results reported in the paper, run the following scripts according to each missingness mechanism:
+
+
+To reproduce the findings from paper, you must run:
+```bash
+python codes/experimental_design_dead_pixels.py   # MCAR
+python codes/experimental_random_square.py        # MAR
+python codes/experimental_design_stripes.py       # MNAR
+```
+After running all experiments, aggregate the results with:
+```bash
+codes/aux_codes.py 
+```
+
+## 🧠 MedInpainter: Open-Source Framework for Mammography Inpainting
+
+To promote reproducibility and support further research in mechanism-aware image inpainting, we introduce MedInpainter, an open-source framework designed for mammographic imaging.
+
+The framework provides:
+- Mapping to missingness mechanisms (MCAR, MAR, MNAR)
+- Standardized and reproducible evaluation protocols
+- Benchmarking support for inpainting methods 
+
+Run the application with:
+```bash 
+python app.py
+```
+
+## Contributing
+
+Contributions are welcome!
+If you find this project useful, consider giving it a ⭐ on GitHub.
+
+## Citation
+```bash
+To be updated soon.
 ```
 
 ## Acknowledgments
