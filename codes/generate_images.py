@@ -3,9 +3,9 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 
 # ==== CONFIG =====
-rows = ["10%", "30%", "50%"]
-cols = ["mask", "knn", "mc", "median", "vaewl", "mae-vit", "mae-vit-gan"]
-cols_graph = ["Input", "kNN", "MC", "Median", "VAEWL", "MAE-VIT", "MAE-ViT-GAN"]
+rows = ["MAR", "MNAR", "MCAR"]
+cols = ["mask", "knn", "mc", "mae-vit", "vaewl", "dip", "diffusion"]
+cols_graph = ["Input", "kNN", "MC", "MAE-ViT", "VAEWL", "DIP", "Diffusion"]
 base_path = "/home/gpu-10-2025/Downloads/images"  # pasta base
 
 # ==== FIGURE =====
@@ -13,7 +13,7 @@ fig, axes = plt.subplots(len(rows), len(cols), figsize=(30, 18),
     gridspec_kw={"wspace": 0.01, "hspace": -0.35})
 
 for i, row in enumerate(rows):
-    row_folder = row.replace("%", "")
+    row_folder = row.replace("", "")
 
     for j, (col, col_n) in enumerate(zip(cols, cols_graph)):
         img_path = os.path.join(base_path, row_folder, f"{col}.png")

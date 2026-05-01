@@ -1,8 +1,8 @@
 import pandas as pd
 
-datasets = ["inbreast", "mias", "vindr-reduzido"]
-MD_MECHANISM = ["MNAR-SQUARES"]
-imputers = ["knn", "mc", "dip", "vaewl","mae-vit-gan", "mae-vit", "diffusion"]
+datasets = ["inbreast","mias", "vindr-reduzido"]  # List of datasets to process
+MD_MECHANISM = ["MNAR-LINES", "MNAR-SQUARES"]
+imputers = ["knn", "mc",  "vaewl","dip", "mae-vit", "diffusion"]
 
 results = []
 for dataset in datasets:
@@ -21,7 +21,7 @@ df_results.to_csv("results.csv", index=False)
 # O nome do arquivo CSV carregado é 'results.csv'
 FILE_PATH = "results.csv"
 
-def format_mean_std(series_mean, series_std, decimals=4):
+def format_mean_std(series_mean, series_std, decimals=3):
     """
     Formata as séries de Média e Desvio Padrão como uma única string: "Média ± Desvio Padrão".
     Trata casos onde o desvio padrão é NaN (ex: apenas 1 observação) como 0.
