@@ -1,8 +1,8 @@
 import pandas as pd
 
 datasets = ["inbreast","mias", "vindr-reduzido"]  # List of datasets to process
-MD_MECHANISM = ["MNAR-LINES", "MNAR-SQUARES"]
-imputers = ["knn", "mc",  "vaewl","dip", "mae-vit", "diffusion"]
+MD_MECHANISM = ["MNAR-SQUARES", "MNAR-LINES"]
+imputers = ["knn", "mc",  "vaewl","mae-vit", "diffusion", "dip"]
 
 results = []
 for dataset in datasets:
@@ -15,7 +15,7 @@ for dataset in datasets:
         results.append(df)
 
 df_results = pd.concat(results).rename(columns={"Unnamed: 0":"fold"})
-df_results.to_csv("results.csv", index=False)
+df_results.to_csv("results_mnar_mar.csv", index=False)
 
 
 # O nome do arquivo CSV carregado é 'results.csv'
