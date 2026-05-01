@@ -1,6 +1,6 @@
 # Robustness Evaluation of Image Inpainting Techniques
 
-This repository provides the codebase for evaluating six image inpainting methods—**$\kappa$-Nearest Neighbors (kNN), Matrix Completion, Variational Autoencoder with Weighted Loss (VAE-WL), Masked Autoencoder Vision Transformer with GAN Loss (MAE-ViT+GAN), Deep Image Prior (DIP), MAM-E: Mammographic synthetic image generation with diffusion models, and Vision Language Model **—across three mammography datasets: INBreast, MIAS, and a stratified 1,000-image subset of VinDr-Mammo.
+This repository provides the codebase for evaluating six image inpainting methods—**$\kappa$-Nearest Neighbors (kNN), Matrix Completion, Variational Autoencoder with Weighted Loss (VAE-WL), Masked Autoencoder Vision Transformer (MAE-ViT), Deep Image Prior (DIP), and MAM-E: Mammographic synthetic image generation with diffusion models **—across mammography datasets: INBreast, MIAS, CBIS-DDSM, and a stratified 1,000-image subset of VinDr-Mammo.
 
 An example of inpainted images produced by the evaluated methods is shown below:
 

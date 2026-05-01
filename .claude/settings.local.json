@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd c:\\\\\\\\Users\\\\\\\\Mult-e\\\\\\\\Desktop\\\\\\\\@Codigos\\\\\\\\MissingMedicalData)",
+      "Bash(python -c \"import flask; print\\('Flask', flask.__version__\\)\")",
+      "Bash(pip install *)",
+      "Bash(python app.py)",
+      "Bash(curl -s http://localhost:5000/)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('missing:', d['missing_pct'], '% | metrics:', d['metrics']\\)\")",
+      "Bash(python -c ' *)"
+    ]
+  }
+}
