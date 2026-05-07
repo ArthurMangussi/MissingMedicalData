@@ -46,6 +46,10 @@ codes/aux_codes.py
 
 To promote reproducibility and support further research in mechanism-aware image inpainting, we introduce MedInpainter, an open-source framework designed for mammographic imaging.
 
+<p align="center">
+  <img src="paper/medinpainter.png" width="600" title="MedInpainter Interface">
+</p>
+
 The framework provides:
 - Mapping to missingness mechanisms (MCAR, MAR, MNAR)
 - Standardized and reproducible evaluation protocols
