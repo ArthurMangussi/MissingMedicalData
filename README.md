@@ -5,7 +5,7 @@ This repository provides the codebase for evaluating six image inpainting method
 An example of inpainted images produced by the evaluated methods is shown below:
 
 <p align="center">
-  <img src="paper/inpainting_results.png" width="600" title="Resultados de Inpainting">
+  <img src="paper/inpainting_results_final.png" width="600" title="Resultados de Inpainting">
 </p>
 
 The results reported in this repository are described in a paper submitted to the British Machine Vision Conference, to be held in UK. Additionally, the supplementary material can be viewed [here](paper)
