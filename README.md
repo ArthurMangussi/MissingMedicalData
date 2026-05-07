@@ -5,7 +5,7 @@ This repository provides the codebase for evaluating six image inpainting method
 An example of inpainted images produced by the evaluated methods is shown below:
 
 <p align="center">
-  <img src="paper/inpainting_results_final.png" width="800" title="Resultados de Inpainting">
+  <img src="paper/inpainting_results_final.png" width="600" title="Resultados de Inpainting">
 </p>
 
 The results reported in this repository are described in a paper submitted to the British Machine Vision Conference, to be held in UK. Additionally, the supplementary material can be viewed [here](paper)
@@ -47,7 +47,7 @@ codes/aux_codes.py
 To promote reproducibility and support further research in mechanism-aware image inpainting, we introduce MedInpainter, an open-source framework designed for mammographic imaging.
 
 <p align="center">
-  <img src="paper/medinpainter.png" width="600" title="MedInpainter Interface">
+  <img src="paper/medinpainter.png" width="900" title="MedInpainter Interface">
 </p>
 
 The framework provides:
