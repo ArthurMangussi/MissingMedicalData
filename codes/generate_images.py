@@ -5,7 +5,7 @@ import matplotlib.image as mpimg
 # ==== CONFIG =====
 rows = ["MAR", "MNAR", "MCAR"]
 cols = ["mask", "knn", "mc", "mae-vit", "vaewl", "dip", "diffusion"]
-cols_graph = ["Input", "kNN", "MC", "MAE-ViT", "VAEWL", "DIP", "Diffusion"]
+cols_graph = ["Input", "kNN", "MC", "CMask-ViT", "VAEWL", "DIP", "Diffusion"]
 base_path = "/home/gpu-10-2025/Downloads/images"  # pasta base
 
 # ==== FIGURE =====
