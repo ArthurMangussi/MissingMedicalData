@@ -41,6 +41,9 @@ from PIL import Image
 # Diffusion-based inpainting
 from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 
+# MAT (Mask-Aware Transformer) inpainting
+from algorithms.mat.inference import MATInpainter
+
 # Ignorar todos os avisos
 warnings.filterwarnings("ignore")
 
@@ -412,6 +415,40 @@ class ModelsImputation:
 
     # ------------------------------------------------------------------------
     @staticmethod
+    def model_mat(
+        checkpoint_path: str = "/home/gpu-10-2025/Área de trabalho/Modelos/mat_network-snapshot.pkl",
+        resolution: int = 256,
+        device: str = "cuda",
+    ):
+        """
+        Load a MAT (Mask-Aware Transformer) generator trained on one of this
+        project's mammography datasets via `codes/train_mat.py` (MAT ships no
+        checkpoint pretrained on medical images, so it must be trained first;
+        update `checkpoint_path` to point at the resulting
+        `network-snapshot-*.pkl`).
+
+        Parameters
+        ----------
+        checkpoint_path : str, optional
+            Path to a MAT `network-snapshot-*.pkl` checkpoint.
+        resolution : int, optional
+            Network/training resolution. Default: 256 (see codes/train_mat.py).
+        device : str, optional
+            Device to use ('cuda' or 'cpu'). Default: 'cuda'
+
+        Returns
+        -------
+        mat_model : MATInpainter
+            Initialized MAT model ready for `.transform(x_md, missing_mask)`.
+        """
+        return MATInpainter(
+            checkpoint_path=checkpoint_path,
+            resolution=resolution,
+            device=device,
+        )
+
+    # ------------------------------------------------------------------------
+    @staticmethod
     def model_knn():
         knn = KNNWrapper(n_neighbors=5)
         return knn
@@ -588,6 +625,10 @@ class ModelsImputation:
             case "diffusion":
                 self._logger.info("[Diffusion] Loading pipeline...")
                 return ModelsImputation.model_diffusion()
+
+            case "mat":
+                self._logger.info("[MAT] Loading generator...")
+                return ModelsImputation.model_mat()
 
 
 class CNN:

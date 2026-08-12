@@ -337,7 +337,7 @@ if __name__ == "__main__":
         "vindr-reduzido": ["MNAR-SQUARES", "MNAR-LINES"],
         #"cbis-ddsm": ["MCAR"],
     }
-    imputers = ["knn", "mc", "vaewl", "mae-vit", "dip", "diffusion"]
+    imputers = ["knn", "mc", "vaewl", "mae-vit", "dip", "diffusion", "mat"]
 
     for dataset_name, mechanisms in dataset_mechanisms.items():
         run_classification(

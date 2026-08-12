@@ -36,7 +36,7 @@ DATASET_MECHANISMS = {
     "vindr-reduzido": ["MNAR-SQUARES", "MNAR-LINES"],
     #"cbis-ddsm": ["MCAR"],
 }
-IMPUTERS = ["knn", "mc", "vaewl", "mae-vit", "dip", "diffusion"]
+IMPUTERS = ["knn", "mc", "vaewl", "mae-vit", "dip", "diffusion", "mat"]
 METRICS = ["ACCURACY", "F1", "AUC"]
 
 # Fixed categorical order (slots 1, 2, 3, 4, 5, 6 of the validated default
@@ -52,6 +52,7 @@ METHOD_COLORS = {
     "mae-vit": "#008300",
     "dip": "#4a3aa7",
     "diffusion": "#e34948",
+    "mat": "#eb6834",
 }
 METHOD_LABELS = {
     "baseline": "Baseline (clean)",
@@ -61,6 +62,7 @@ METHOD_LABELS = {
     "mae-vit": "CMask-ViT",
     "dip": "DIP",
     "diffusion": "Diffusion",
+    "mat": "MAT",
 }
 METRIC_LABELS = {
     "ACCURACY": "Accuracy",
