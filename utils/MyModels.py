@@ -417,7 +417,6 @@ class ModelsImputation:
     @staticmethod
     def model_mat(
         checkpoint_path: str = "/home/gpu-10-2025/Área de trabalho/Modelos/mat_network-snapshot.pkl",
-        resolution: int = 256,
         device: str = "cuda",
     ):
         """
@@ -431,8 +430,6 @@ class ModelsImputation:
         ----------
         checkpoint_path : str, optional
             Path to a MAT `network-snapshot-*.pkl` checkpoint.
-        resolution : int, optional
-            Network/training resolution. Default: 256 (see codes/train_mat.py).
         device : str, optional
             Device to use ('cuda' or 'cpu'). Default: 'cuda'
 
@@ -440,10 +437,11 @@ class ModelsImputation:
         -------
         mat_model : MATInpainter
             Initialized MAT model ready for `.transform(x_md, missing_mask)`.
+            Its resolution is read from the checkpoint itself (see
+            algorithms/mat/inference.py), not passed in here.
         """
         return MATInpainter(
             checkpoint_path=checkpoint_path,
-            resolution=resolution,
             device=device,
         )
 

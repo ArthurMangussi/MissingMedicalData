@@ -28,6 +28,7 @@ import os
 import shutil
 import sys
 import tempfile
+import warnings
 
 import cv2
 import numpy as np
@@ -35,6 +36,13 @@ import torch
 from sklearn.model_selection import train_test_split
 
 sys.path.append("./")
+
+# Harmless version gate in the vendored MAT code (torch_utils/ops/conv2d_gradfix.py):
+# it only recognizes PyTorch 1.7-1.9 and always falls back to the stock
+# torch.nn.functional.conv2d on newer PyTorch, which computes the same forward
+# result. Silencing it avoids flooding the log on every conv layer call.
+warnings.filterwarnings("ignore", message="conv2d_gradfix not supported")
+warnings.filterwarnings("ignore", message="grid_sample_gradfix not supported")
 
 from algorithms.mat.train import UserError, setup_training_loop_kwargs, subprocess_fn
 from utils.MeLogSingle import MeLogger

@@ -17,17 +17,6 @@ import torch
 import algorithms.mat  # noqa: F401  (adds the vendored MAT repo root to sys.path)
 import dnnlib
 import legacy
-from networks.mat import Generator
-
-
-def _copy_params_and_buffers(src_module, dst_module, require_all=False):
-    assert isinstance(src_module, torch.nn.Module)
-    assert isinstance(dst_module, torch.nn.Module)
-    src_tensors = dict(list(src_module.named_parameters()) + list(src_module.named_buffers()))
-    for name, tensor in list(dst_module.named_parameters()) + list(dst_module.named_buffers()):
-        assert (name in src_tensors) or (not require_all)
-        if name in src_tensors:
-            tensor.copy_(src_tensors[name].detach()).requires_grad_(tensor.requires_grad)
 
 
 class MATInpainter:
@@ -36,25 +25,25 @@ class MATInpainter:
     def __init__(
         self,
         checkpoint_path: str,
-        resolution: int = 256,
         device: str = "cuda",
         truncation_psi: float = 1.0,
         noise_mode: str = "const",
     ):
         self.device = torch.device(device if (device == "cpu" or torch.cuda.is_available()) else "cpu")
-        self.resolution = resolution
         self.truncation_psi = truncation_psi
         self.noise_mode = noise_mode
 
+        # `G_ema` unpickles as a ready-to-use nn.Module (torch_utils/persistence.py
+        # embeds the class source), so it can be used as-is instead of being rebuilt
+        # from Generator(...) defaults and weight-copied like generate_image.py does
+        # upstream (that dance exists there to bridge older/converted checkpoints
+        # onto today's class definition; checkpoints from codes/train_mat.py already
+        # come from this exact code, and rebuilding with default kwargs silently
+        # mismatches whatever channel_base/mapping-layer count the "auto" cfg picked
+        # at train time).
         with dnnlib.util.open_url(checkpoint_path) as f:
-            g_saved = legacy.load_network_pkl(f)["G_ema"].to(self.device).eval().requires_grad_(False)
-        self.G = (
-            Generator(z_dim=512, c_dim=0, w_dim=512, img_resolution=resolution, img_channels=3)
-            .to(self.device)
-            .eval()
-            .requires_grad_(False)
-        )
-        _copy_params_and_buffers(g_saved, self.G, require_all=True)
+            self.G = legacy.load_network_pkl(f)["G_ema"].to(self.device).eval().requires_grad_(False)
+        self.resolution = self.G.img_resolution
         self.label = torch.zeros([1, self.G.c_dim], device=self.device)
 
     def _prepare_image(self, image: np.ndarray):
