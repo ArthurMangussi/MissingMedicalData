@@ -58,6 +58,7 @@ def train_mat(
     snap: int = 10,
     val_size: float = 0.1,
     resume: str = None,
+    batch: int = None,
 ):
     logger = MeLogger()
 
@@ -85,6 +86,7 @@ def train_mat(
             cfg="auto",
             kimg=kimg,
             resume=resume,
+            batch=batch,
         )
     except UserError as err:
         shutil.rmtree(workdir, ignore_errors=True)
@@ -123,6 +125,16 @@ if __name__ == "__main__":
     )
     parser.add_argument("--snap", type=int, default=10, help="Snapshot interval, in ticks")
     parser.add_argument("--resume", default=None, help="Path/URL of a checkpoint to resume from")
+    parser.add_argument(
+        "--batch",
+        type=int,
+        default=None,
+        help=(
+            "Override total batch size (must be divisible by --gpus). "
+            "The 'auto' config picks 16 at 256x256, which needs more than ~8GB of VRAM; "
+            "lower this (e.g. 4 or 2) on smaller GPUs to avoid CUDA OOM."
+        ),
+    )
     cli_args = parser.parse_args()
 
     train_mat(
@@ -132,4 +144,5 @@ if __name__ == "__main__":
         kimg=cli_args.kimg,
         snap=cli_args.snap,
         resume=cli_args.resume,
+        batch=cli_args.batch,
     )
