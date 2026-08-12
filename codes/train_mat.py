@@ -59,6 +59,8 @@ def train_mat(
     val_size: float = 0.1,
     resume: str = None,
     batch: int = None,
+    gamma: float = None,
+    aug: str = None,
 ):
     logger = MeLogger()
 
@@ -87,6 +89,8 @@ def train_mat(
             kimg=kimg,
             resume=resume,
             batch=batch,
+            gamma=gamma,
+            aug=aug,
         )
     except UserError as err:
         shutil.rmtree(workdir, ignore_errors=True)
@@ -135,6 +139,22 @@ if __name__ == "__main__":
             "lower this (e.g. 4 or 2) on smaller GPUs to avoid CUDA OOM."
         ),
     )
+    parser.add_argument(
+        "--gamma",
+        type=float,
+        default=None,
+        help=(
+            "Override R1 regularization gamma. Pass 0 to disable R1 entirely: its lazy "
+            "regularization step does a double-backward on both MAT stages at once and can "
+            "spike VRAM well above a normal step, independent of --batch."
+        ),
+    )
+    parser.add_argument(
+        "--aug",
+        default=None,
+        choices=["noaug", "ada", "fixed"],
+        help="Discriminator augmentation mode [default: ada]. Use 'noaug' to shave its overhead.",
+    )
     cli_args = parser.parse_args()
 
     train_mat(
@@ -145,4 +165,6 @@ if __name__ == "__main__":
         snap=cli_args.snap,
         resume=cli_args.resume,
         batch=cli_args.batch,
+        gamma=cli_args.gamma,
+        aug=cli_args.aug,
     )
