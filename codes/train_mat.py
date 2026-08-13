@@ -1,26 +1,28 @@
 """
 Train MAT (Mask-Aware Transformer for Large Hole Image Inpainting, Li et al.,
-CVPR 2022) on one of this project's mammography datasets.
+CVPR 2022) on the BreaKHis dataset (histopatologia de mama, benigno vs.
+maligno).
 
-No checkpoint pretrained on mammography exists for MAT (the released weights
-are CelebA-HQ / FFHQ / Places365), so it has to be trained from scratch here
-before it can be used as an imputer. This script exports one of the project's
-in-memory datasets (see utils/MyDataset.py) to a folder of PNGs and drives the
-vendored training loop in algorithms/mat/ (256x256 config, since the
-mammography crops used across this project are 224x224).
+No checkpoint pretrained on histopathology exists for MAT (the released
+weights are CelebA-HQ / FFHQ / Places365), so it has to be trained from
+scratch here before it can be used as an imputer. This script reuses the
+patient-level train/val/test split from codes/breakhist.py, training only on
+the train split and validating on the val split -- the held-out test split
+is never exported here, so it stays untouched for the imputation experiments
+and the downstream benign vs. maligno classification task.
 
 The resulting `network-snapshot-*.pkl` (same format `legacy.load_network_pkl`
 reads) is what `utils/MyModels.py::ModelsImputation.model_mat` loads via
 `algorithms.mat.inference.MATInpainter` for the "mat" entry in
-`ModelsImputation.choose_model`, used from the codes/experimental_design_*.py
-scripts.
+`ModelsImputation.choose_model`, used from
+codes/experimental_design_breakhist.py.
 
 License note: MAT's code (algorithms/mat/) is released under NVIDIA's
 Source Code License-NC - research/non-commercial use only.
 
 Usage
 -----
-    python codes/train_mat.py --dataset cbis-ddsm --outdir ./training-runs/mat --gpus 1
+    python codes/train_mat.py --outdir ./training-runs/mat --gpus 1
 """
 
 import argparse
@@ -33,7 +35,6 @@ import warnings
 import cv2
 import numpy as np
 import torch
-from sklearn.model_selection import train_test_split
 
 sys.path.append("./")
 
@@ -44,9 +45,16 @@ sys.path.append("./")
 warnings.filterwarnings("ignore", message="conv2d_gradfix not supported")
 warnings.filterwarnings("ignore", message="grid_sample_gradfix not supported")
 
+# The upfirdn2d custom CUDA kernel (torch_utils/ops/upfirdn2d.py) is JIT-compiled
+# via nvcc at import time; this machine only has PyTorch's bundled CUDA runtime,
+# not the CUDA Toolkit compiler, so the build always fails and it falls back to
+# a slower pure-PyTorch reference implementation. Training is still correct,
+# just slower -- silencing this avoids flooding the log on every run.
+warnings.filterwarnings("ignore", message="Failed to build CUDA kernels for upfirdn2d")
+
 from algorithms.mat.train import UserError, setup_training_loop_kwargs, subprocess_fn
+from codes.breakhist import load_and_split_breakhist
 from utils.MeLogSingle import MeLogger
-from utils.MyDataset import Datasets
 
 DATALOADER = "datasets.dataset_256.ImageFolderMaskDataset"  # matches algorithms/mat/datasets/dataset_256.py
 
@@ -59,12 +67,10 @@ def _export_image_folder(images: np.ndarray, out_dir: str):
 
 
 def train_mat(
-    dataset_name: str,
     outdir: str,
     gpus: int = 1,
     kimg: int = None,
     snap: int = 10,
-    val_size: float = 0.1,
     resume: str = None,
     batch: int = None,
     gamma: float = None,
@@ -72,16 +78,16 @@ def train_mat(
 ):
     logger = MeLogger()
 
-    data = Datasets(dataset_name)
-    images, *_ = data.load_data()  # (N, 224, 224) grayscale images
-    images_train, images_val = train_test_split(images, test_size=val_size, random_state=42)
+    (images_train, _), (images_val, _), _ = load_and_split_breakhist()
+    logger.info(
+        f"[MAT] BreaKHis patient-level split: {len(images_train)} train / "
+        f"{len(images_val)} val images (test split held out)"
+    )
 
-    workdir = tempfile.mkdtemp(prefix=f"mat_{dataset_name}_")
+    workdir = tempfile.mkdtemp(prefix="mat_breakhist_")
     train_dir = os.path.join(workdir, "train")
     val_dir = os.path.join(workdir, "val")
-    logger.info(
-        f"[MAT] Exporting {len(images_train)} train / {len(images_val)} val images to {workdir}"
-    )
+    logger.info(f"[MAT] Exporting images to {workdir}")
     _export_image_folder(images_train, train_dir)
     _export_image_folder(images_val, val_dir)
 
@@ -126,10 +132,7 @@ def train_mat(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train MAT on a mammography dataset")
-    parser.add_argument(
-        "--dataset", required=True, choices=["cbis-ddsm", "inbreast", "mias", "vindr-reduzido"]
-    )
+    parser = argparse.ArgumentParser(description="Train MAT on the BreaKHis dataset")
     parser.add_argument("--outdir", default="./training-runs/mat")
     parser.add_argument("--gpus", type=int, default=1)
     parser.add_argument(
@@ -166,7 +169,6 @@ if __name__ == "__main__":
     cli_args = parser.parse_args()
 
     train_mat(
-        dataset_name=cli_args.dataset,
         outdir=cli_args.outdir,
         gpus=cli_args.gpus,
         kimg=cli_args.kimg,

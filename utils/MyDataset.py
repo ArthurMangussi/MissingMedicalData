@@ -211,8 +211,70 @@ class Datasets:
 
         return my_dict
 
+    def _load_breakhist_images(self, magnification: str = None):
+        """
+        Method to load the BreaKHis dataset (histopathological images of
+        breast tumors), labeled for benign vs. maligno classification.
+
+        Args:
+            magnification (str, optional): filtra as imagens por um único
+                nível de magnificação ("40X", "100X", "200X" ou "400X").
+                Quando None (padrão), carrega imagens de todas as
+                magnificações.
+        """
+        images = []
+        filenames = []
+        labels = []
+        patients = []
+
+        data_dir = self.path + "/BreaKHis_v1/histology_slides/breast"
+        mapa_classe = {"benign": 0, "malignant": 1}  # Benigno vs Maligno
+
+        for classe, label in mapa_classe.items():
+            classe_dir = os.path.join(data_dir, classe, "SOB")
+            for tumor_type in sorted(os.listdir(classe_dir)):
+                tumor_dir = os.path.join(classe_dir, tumor_type)
+                if not os.path.isdir(tumor_dir):
+                    continue
+
+                for patient_id in sorted(os.listdir(tumor_dir)):
+                    patient_dir = os.path.join(tumor_dir, patient_id)
+                    if not os.path.isdir(patient_dir):
+                        continue
+
+                    for mag in sorted(os.listdir(patient_dir)):
+                        if magnification is not None and mag != magnification:
+                            continue
+
+                        mag_dir = os.path.join(patient_dir, mag)
+                        if not os.path.isdir(mag_dir):
+                            continue
+
+                        files = sorted(
+                            f for f in os.listdir(mag_dir) if f.endswith(".png")
+                        )
+
+                        for f in files:
+                            caminho_imagem = os.path.join(mag_dir, f)
+                            imagem = cv2.imread(caminho_imagem, cv2.IMREAD_GRAYSCALE)
+                            if imagem is None:
+                                raise ValueError(f"Erro ao ler a imagem: {f}")
+
+                            # Redimensiona
+                            imagem = cv2.resize(imagem, (224, 224))
+                            images.append(imagem)
+                            filenames.append(f[:-4])
+                            labels.append(label)
+                            patients.append(patient_id)
+
+        return np.array(images), filenames, labels, patients
+
     def load_data(self):
         match self.name_dataset:
+            case "breakhist":
+                images, filenames, labels, patients = self._load_breakhist_images()
+                return images, filenames, labels, patients
+
             case "inbreast":
                 images, image_ids = self._load_inbreast_images()
                 y_dict = self._load_inbreast_labels()

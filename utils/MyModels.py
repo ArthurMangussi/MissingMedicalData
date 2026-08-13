@@ -346,7 +346,7 @@ class ModelsImputation:
     # ------------------------------------------------------------------------
     @staticmethod
     def model_dip(
-        num_iter: int = 4000,
+        num_iter: int = 400,
         learning_rate: float = 0.001,
         input_depth: int = 32,
         num_channels: int = 128,
@@ -416,7 +416,7 @@ class ModelsImputation:
     # ------------------------------------------------------------------------
     @staticmethod
     def model_mat(
-        checkpoint_path: str = "/home/gpu-10-2025/Área de trabalho/Modelos/mat_network-snapshot.pkl",
+        checkpoint_path: str = "/home/gpu-10-2025/Área de trabalho/MissingMedicalData/training-runs/mat/00001-train-auto1-batch2/network-snapshot-000000.pkl",
         device: str = "cuda",
     ):
         """

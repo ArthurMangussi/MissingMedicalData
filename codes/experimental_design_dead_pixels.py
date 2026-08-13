@@ -213,12 +213,15 @@ def run_experimental_design(
 
 if __name__ == "__main__":
 
-    dataset_names = ["cbis-ddsm"]  #
+    dataset_names = ["breakhist"]  #
     tempo_total = {}
     for name in dataset_names:
         # Carregar as imagens
         data = Datasets(name)
-        inbreast_images, _, labels = data.load_data()
+        if name == "breakhist":
+            inbreast_images, _, labels, _ = data.load_data()
+        else:
+            inbreast_images, _, labels = data.load_data()
 
         algorithms = ["vaewl"]
         MD_MECHANISMS = "MCAR"

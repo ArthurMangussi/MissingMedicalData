@@ -9,6 +9,7 @@ __pycache__/
 logs
 results
 new_results
+training-runs
 
 # Distribution / packaging
 .Python

@@ -207,7 +207,7 @@ if __name__ == "__main__":
         inbreast_images, y_mapped, image_ids = data.load_data()
         
         
-        algorithms = ["dip"]  
+        algorithms = ["mat"]  
         MD_MECHANISMS = "MNAR-SQUARES"
         
         for model_impt in algorithms:
