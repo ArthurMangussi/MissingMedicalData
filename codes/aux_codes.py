@@ -2,7 +2,7 @@ import pandas as pd
 
 datasets = ["inbreast","mias", "vindr-reduzido"]  # List of datasets to process
 MD_MECHANISM = ["MNAR-SQUARES", "MNAR-LINES"]
-imputers = ["knn", "mc",  "vaewl","mae-vit", "diffusion", "dip", "mat"]
+imputers = ["knn", "mc",  "vaewl","mae-vit", "diffusion", "dip", "mat", "harp"]
 
 results = []
 for dataset in datasets:

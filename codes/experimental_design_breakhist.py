@@ -119,7 +119,7 @@ def run_experimental_design(
                     missing_mask_test_np=batch_mask,
                 )
 
-            elif model_impt in ("mc", "mat"):
+            elif model_impt in ("mc", "mat", "harp"):
                 batch_imputed = imputer.transform(batch_x_md, batch_mask)
 
             elif model_impt == "diffusion":

@@ -44,6 +44,9 @@ from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 # MAT (Mask-Aware Transformer) inpainting
 from algorithms.mat.inference import MATInpainter
 
+# HARP restoration model (Palette-style conditional diffusion) inpainting
+from algorithms.harp.inference import HARPInpainter
+
 # Ignorar todos os avisos
 warnings.filterwarnings("ignore")
 
@@ -447,6 +450,39 @@ class ModelsImputation:
 
     # ------------------------------------------------------------------------
     @staticmethod
+    def model_harp(
+        checkpoint_path: str = "/home/gpu-10-2025/Área de trabalho/Modelos/restoration_model.pth",
+        device: str = "cuda",
+    ):
+        """
+        Load HARP's restoration model (a Palette-style conditional diffusion
+        model for histopathology artifact inpainting, Fuchs et al., MIDL
+        2024). Unlike MAT, a checkpoint pretrained on histopathology (BCSS)
+        is released upstream and can be downloaded directly from
+        https://huggingface.co/SsharvienKumar/HARP_Models/resolve/main/restoration_model.pth
+        -- same broad domain as BreaKHis (H&E breast histopathology), so it
+        may work reasonably out of the box, or be fine-tuned first. Update
+        `checkpoint_path` to wherever it was downloaded (or fine-tuned) to.
+
+        Parameters
+        ----------
+        checkpoint_path : str, optional
+            Path to a HARP restoration `.pth` state_dict checkpoint.
+        device : str, optional
+            Device to use ('cuda' or 'cpu'). Default: 'cuda'
+
+        Returns
+        -------
+        harp_model : HARPInpainter
+            Initialized HARP model ready for `.transform(x_md, missing_mask)`.
+        """
+        return HARPInpainter(
+            checkpoint_path=checkpoint_path,
+            device=device,
+        )
+
+    # ------------------------------------------------------------------------
+    @staticmethod
     def model_knn():
         knn = KNNWrapper(n_neighbors=5)
         return knn
@@ -627,6 +663,10 @@ class ModelsImputation:
             case "mat":
                 self._logger.info("[MAT] Loading generator...")
                 return ModelsImputation.model_mat()
+
+            case "harp":
+                self._logger.info("[HARP] Loading restoration model...")
+                return ModelsImputation.model_harp()
 
 
 class CNN:

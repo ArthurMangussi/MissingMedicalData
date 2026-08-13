@@ -4,8 +4,8 @@ import matplotlib.image as mpimg
 
 # ==== CONFIG =====
 rows = ["MAR", "MNAR", "MCAR"]
-cols = ["mask", "knn", "mc", "mae-vit", "vaewl", "dip", "diffusion", "mat"]
-cols_graph = ["Input", "kNN", "MC", "CMask-ViT", "VAEWL", "DIP", "Diffusion", "MAT"]
+cols = ["mask", "knn", "mc", "mae-vit", "vaewl", "dip", "diffusion", "mat", "harp"]
+cols_graph = ["Input", "kNN", "MC", "CMask-ViT", "VAEWL", "DIP", "Diffusion", "MAT", "HARP"]
 base_path = "/home/gpu-10-2025/Downloads/images"  # pasta base
 
 # ==== FIGURE =====

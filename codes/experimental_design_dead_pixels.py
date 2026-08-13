@@ -80,7 +80,7 @@ def run_experimental_design(
                 missing_mask_test_np=missing_mask_test,
             )
 
-        elif model_impt in ("mc", "mat"):
+        elif model_impt in ("mc", "mat", "harp"):
             x_test_imputed = imputer.transform(x_test_md, missing_mask_test)
 
         elif model_impt == "diffusion":
