@@ -36,7 +36,7 @@ UNET_KWARGS = dict(
 )
 BETA_SCHEDULE = {
     "train": dict(schedule="linear", n_timestep=1000, linear_start=1e-6, linear_end=0.01),
-    "test": dict(schedule="linear", n_timestep=250, linear_start=1e-4, linear_end=0.09),
+    "test": dict(schedule="linear", n_timestep=100, linear_start=1e-4, linear_end=0.09),
 }
 
 
@@ -66,11 +66,15 @@ class HARPInpainter:
         self.model.set_new_noise_schedule(device=self.device, phase="test")
         self.model.eval()
 
-    def _prepare(self, image: np.ndarray, mask: np.ndarray):
-        """image (H,W)[,1] any range + mask (H,W)[,1] 1=missing/0=known
-        -> (3,res,res) image tensor in [-1,1], (1,res,res) mask tensor (1=hole), orig (H,W)."""
-        arr = np.asarray(image, dtype=np.float32)
-        if arr.ndim == 3 and arr.shape[-1] == 1:
+    def _prepare(self, images: np.ndarray, masks: np.ndarray):
+        """images (N,H,W)[,1] any range + masks (N,H,W)[,1] 1=missing/0=known
+        -> (N,3,res,res) image tensor in [-1,1], (N,1,res,res) mask tensor (1=hole), orig (H,W).
+
+        Vectorized over the whole chunk: every image in this project shares the
+        same (H,W), so a single resize/reshape covers the whole batch at once.
+        """
+        arr = np.asarray(images, dtype=np.float32)
+        if arr.ndim == 4 and arr.shape[-1] == 1:
             arr = arr[..., 0]
         # Missing pixels arrive as NaN in this project's convention (see
         # ModelsImputation.mae_imputer_transform); the hole area of the image
@@ -78,24 +82,28 @@ class HARPInpainter:
         arr = np.nan_to_num(arr, nan=0.0)
         if arr.max() > 1.0 + 1e-6:
             arr = arr / 255.0
-        orig_shape = arr.shape[:2]
+        orig_shape = arr.shape[1:3]
         if orig_shape != (self.resolution, self.resolution):
-            arr = cv2.resize(arr, (self.resolution, self.resolution), interpolation=cv2.INTER_LINEAR)
-        rgb_chw = np.repeat(arr[None, ...], 3, axis=0)  # (3,res,res)
-        img = (rgb_chw * 2.0 - 1.0).astype(np.float32)  # [-1,1]
+            arr = np.stack(
+                [cv2.resize(a, (self.resolution, self.resolution), interpolation=cv2.INTER_LINEAR) for a in arr]
+            )
+        rgb_nchw = np.repeat(arr[:, None, ...], 3, axis=1)  # (N,3,res,res)
+        img = (rgb_nchw * 2.0 - 1.0).astype(np.float32)  # [-1,1]
 
-        m = np.asarray(mask, dtype=np.float32)
-        if m.ndim == 3 and m.shape[-1] == 1:
+        m = np.asarray(masks, dtype=np.float32)
+        if m.ndim == 4 and m.shape[-1] == 1:
             m = m[..., 0]
         if m.max() > 1.0 + 1e-6:
             m = m / 255.0
-        if m.shape[:2] != (self.resolution, self.resolution):
-            m = cv2.resize(m, (self.resolution, self.resolution), interpolation=cv2.INTER_NEAREST)
-        mask_arr = (m > 0.5).astype(np.float32)[None, ...]  # (1,res,res), 1=hole
+        if m.shape[1:3] != (self.resolution, self.resolution):
+            m = np.stack(
+                [cv2.resize(mi, (self.resolution, self.resolution), interpolation=cv2.INTER_NEAREST) for mi in m]
+            )
+        mask_arr = (m > 0.5).astype(np.float32)[:, None, ...]  # (N,1,res,res), 1=hole
 
         return img, mask_arr, orig_shape
 
-    def transform(self, x_md_batch: np.ndarray, missing_mask_batch: np.ndarray) -> np.ndarray:
+    def transform(self, x_md_batch: np.ndarray, missing_mask_batch: np.ndarray, batch_size: int = 16) -> np.ndarray:
         """
         Parameters
         ----------
@@ -104,6 +112,12 @@ class HARPInpainter:
             holes - discarded before diffusion).
         missing_mask_batch : np.ndarray, same leading shape as x_md_batch
             1 = missing pixel, 0 = observed pixel.
+        batch_size : int, optional
+            How many images run through the 250-step reverse diffusion loop
+            together. Network.restoration is already fully batch-generic
+            (`b, *_ = y_cond.shape` drives every op, see algorithms/harp/network.py),
+            so this reuses the same sampling loop across `batch_size` images at
+            once instead of repeating it per image -- lower this if it OOMs.
 
         Returns
         -------
@@ -113,11 +127,15 @@ class HARPInpainter:
         keep_channel_dim = x_md_batch.ndim == 4 and x_md_batch.shape[-1] == 1
         out = np.empty(x_md_batch.shape, dtype=np.float32)
 
-        for i in range(x_md_batch.shape[0]):
-            image_chw, mask_hw, orig_shape = self._prepare(x_md_batch[i], missing_mask_batch[i])
+        n = x_md_batch.shape[0]
+        for start in range(0, n, batch_size):
+            end = min(start + batch_size, n)
+            image_nchw, mask_nhw, orig_shape = self._prepare(
+                x_md_batch[start:end], missing_mask_batch[start:end]
+            )
 
-            image_t = torch.from_numpy(image_chw).unsqueeze(0).to(self.device)
-            mask_t = torch.from_numpy(mask_hw).unsqueeze(0).to(self.device)
+            image_t = torch.from_numpy(image_nchw).to(self.device)
+            mask_t = torch.from_numpy(mask_nhw).to(self.device)
 
             # Matches RestorationModel.inpaint(): known area keeps its real
             # value, the hole starts from Gaussian noise (not the corrupted
@@ -127,12 +145,14 @@ class HARPInpainter:
             with torch.no_grad():
                 y_t, _ = self.model.restoration(cond_image, y_t=cond_image, y_0=image_t, mask=mask_t)
 
-            output = (y_t[0].clamp(-1, 1) + 1.0) / 2.0  # (3,res,res) in [0,1]
-            output_np = output.mean(dim=0).cpu().numpy()  # collapse back to grayscale
+            output = (y_t.clamp(-1, 1) + 1.0) / 2.0  # (B,3,res,res) in [0,1]
+            output_np = output.mean(dim=1).cpu().numpy()  # collapse channels -> (B,res,res)
 
-            if output_np.shape != orig_shape:
-                output_np = cv2.resize(output_np, (orig_shape[1], orig_shape[0]), interpolation=cv2.INTER_LINEAR)
+            if output_np.shape[1:] != orig_shape:
+                output_np = np.stack(
+                    [cv2.resize(o, (orig_shape[1], orig_shape[0]), interpolation=cv2.INTER_LINEAR) for o in output_np]
+                )
 
-            out[i] = output_np[..., None] if keep_channel_dim else output_np
+            out[start:end] = output_np[..., None] if keep_channel_dim else output_np
 
         return out

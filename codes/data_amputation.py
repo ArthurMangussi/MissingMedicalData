@@ -145,7 +145,78 @@ class ImageDataAmputation:
     # ────────────────────────────────────────────────────────────────────────
     # MAR: Missing At Random (depends on observed covariates)
     # ────────────────────────────────────────────────────────────────────────
+    def generate_squares_mask_edge_biased(
+        self,
+        x_data: np.ndarray,
+        square_size: int = 5,
+        edge_bias_strength: float = 3.0,
+    ) -> tuple:
+        """
+        Simulate MAR (Missing At Random) occlusion artifacts: square patches
+        whose position is stochastic but biased toward the image edges/corners.
 
+        Models artifacts like slide markers/annotations, which tend to appear
+        near borders but vary in exact position from sample to sample.
+        Missingness depends only on spatial position (always observed),
+        not on the pixel's own intensity value — this satisfies MAR.
+
+        Parameters
+        ----------
+        x_data : np.ndarray
+            Input image (2D: H×W, 3D: H×W×C, or batch dimension allowed)
+        square_size : int, optional
+            Side length of each square in pixels. Default: 5
+        edge_bias_strength : float, optional
+            Controls how strongly positions are pulled toward edges/corners.
+            Higher = stronger pull toward borders. Default: 3.0
+            (edge_bias_strength=0 recovers a uniform random position, i.e. MCAR-like
+            placement; higher values concentrate mass near r=0/H and c=0/W)
+
+        Returns
+        -------
+        original : np.ndarray
+        missing_data : np.ndarray
+        mask : np.ndarray (N, H, W)
+        """
+        x_data, _, _ = self._normalize_and_prepare(x_data)
+        if x_data.ndim == 3:
+            x_data = np.expand_dims(x_data, axis=-1)
+        N, H, W, C = x_data.shape
+
+        all_masks = []
+        for i in range(N):
+            mask_2d = np.zeros((H, W), dtype=np.float32)
+            image_2d = x_data[i, :, :, 0]
+            foreground_mask = (image_2d > 0).astype(np.float32)
+
+            # --- Sorteia posição com viés para as bordas ---
+            # Usamos uma distribuição Beta(alpha<1, beta<1) em [0,1], que concentra
+            # densidade perto de 0 e 1 (bordas) e pouca massa no meio.
+            # edge_bias_strength alto => alpha/beta menores => mais concentrado nas bordas.
+            alpha = beta = max(1e-2, 1.0 / (1.0 + edge_bias_strength))
+            frac_r = np.random.beta(alpha, beta)
+            frac_c = np.random.beta(alpha, beta)
+
+            r = int(frac_r * (H - square_size))
+            c = int(frac_c * (W - square_size))
+            r = np.clip(r, 0, H - square_size)
+            c = np.clip(c, 0, W - square_size)
+
+            r_end = r + square_size
+            c_end = c + square_size
+
+            mask_2d[r:r_end, c:c_end] = 1
+            # Restringe ao foreground (variável observada adicional, não viola MAR)
+            mask_2d = mask_2d * foreground_mask
+            all_masks.append(mask_2d)
+
+        missing_mask_3d = np.stack(all_masks, axis=0)  # (N, H, W)
+        missing_mask_4d = np.repeat(
+            np.expand_dims(missing_mask_3d, axis=-1), C, axis=-1
+        ).astype(np.float32)
+        x_data_md = self._apply_mask(x_data, missing_mask_4d)
+        return x_data, x_data_md, missing_mask_3d
+    
     def generate_squares_mask(
         self, x_data: np.ndarray, square_size: int = 5
     ) -> tuple:
@@ -282,7 +353,7 @@ class ImageDataAmputation:
         return x_data, x_data_md, missing_mask_3d
 
 
-    def generate_mnar_intensity(self, x_data: np.ndarray) -> tuple:
+    def generate_mnar_intensity(self, x_data: np.ndarray, missing_rate:float) -> tuple:
         """
         Generate missing pixels based on local intensity (MNAR mechanism).
 
@@ -315,14 +386,19 @@ class ImageDataAmputation:
         >>> original, missing, mask = amputer.generate_mnar_intensity(image)
         """
         x_data, foreground_mask, _ = self._normalize_and_prepare(x_data)
+        if x_data.ndim == 3:
+            x_data = np.expand_dims(x_data, axis=-1)
         num_channels = x_data.shape[-1]
         batch, height, width = x_data.shape[0], x_data.shape[1], x_data.shape[2]
 
         # Average across channels to get grayscale
         grayscale = x_data.mean(axis=-1)  # Shape: (batch, height, width)
 
-        # Normalize intensities to [0, 1]
-        grayscale_flat = grayscale[foreground_mask]
+        # Normalize intensities to [0, 1]. foreground_mask is (H, W), shared
+        # across the whole batch (see _normalize_and_prepare), so it must be
+        # applied on the spatial axes only -- grayscale[foreground_mask] would
+        # try to match it against the leading (batch) axis instead and fail.
+        grayscale_flat = grayscale[:, foreground_mask]
         if len(grayscale_flat) > 0:
             gmin, gmax = grayscale_flat.min(), grayscale_flat.max()
             grayscale_norm = (grayscale - gmin) / (gmax - gmin + 1e-8)
@@ -330,7 +406,7 @@ class ImageDataAmputation:
             grayscale_norm = grayscale
 
         # Probability increases with intensity, scaled by missing_rate
-        prob_missing = grayscale_norm * self.missing_rate
+        prob_missing = grayscale_norm * missing_rate
 
         missing_mask = np.random.binomial(1, prob_missing).astype(np.float32)
         missing_mask_limited = missing_mask * foreground_mask

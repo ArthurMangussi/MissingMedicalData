@@ -69,6 +69,12 @@ class DeepImagePrior:
         
         # Inverte a máscara: 1 para o que conhecemos (tecido), 0 para o buraco
         obs_mask = torch.from_numpy(1 - mask_batch).to(self.device).float()
+        # x_batch carrega NaN na regiao ausente (convencao do projeto, ver
+        # ModelsImputation.mae_imputer_transform). A loss abaixo conta com
+        # `img_var * obs_mask` para zerar o buraco, mas NaN * 0 continua NaN
+        # em ponto flutuante -- sem isso a loss vira NaN ja na 1a iteracao e
+        # envenena os pesos da rede, tornando TODA saida NaN dali em diante.
+        x_batch = np.nan_to_num(x_batch, nan=0.0)
         img_var = torch.from_numpy(x_batch).to(self.device).float()
 
         # Build network (Simplificada para 3 níveis para ser + rápido)
@@ -419,7 +425,7 @@ class ModelsImputation:
     # ------------------------------------------------------------------------
     @staticmethod
     def model_mat(
-        checkpoint_path: str = "/home/gpu-10-2025/Área de trabalho/MissingMedicalData/training-runs/mat/00001-train-auto1-batch2/network-snapshot-000000.pkl",
+        checkpoint_path: str = "/home/gpu-10-2025/Área de trabalho/MissingMedicalData/training-runs/mat/00003-train-auto1-kimg50-batch2/network-snapshot-000050.pkl",
         device: str = "cuda",
     ):
         """

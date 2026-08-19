@@ -73,15 +73,9 @@ def run_experimental_design(
 
         amputation = ImageDataAmputation()
 
-        x_train, x_train_md, _ = amputation.generate_mcar_dead_pixels(
-            x_train, p_single=0.0, p_cluster=0.3, cluster_size=25
-        )
-        x_val, x_val_md, _ = amputation.generate_mcar_dead_pixels(
-            x_val, p_single=0.00, p_cluster=0.3, cluster_size=25
-        )
-        x_test, x_test_md, missing_mask_test = amputation.generate_mcar_dead_pixels(
-            x_test, p_single=0.00, p_cluster=0.3, cluster_size=25
-        )
+        x_train, x_train_md, _ = amputation.generate_mnar_intensity(x_train,missing_rate=0.2)
+        x_val, x_val_md, _ = amputation.generate_mnar_intensity(x_val,missing_rate=0.2)
+        x_test, x_test_md, missing_mask_test = amputation.generate_mnar_intensity(x_test,missing_rate=0.2)
 
         model = ModelsImputation()
         imputer = model.choose_model(
@@ -235,8 +229,8 @@ if __name__ == "__main__":
     labels = np.array(labels)
     patients = np.array(patients)
 
-    algorithms = ["mat"]
-    MD_MECHANISMS = "MCAR"
+    algorithms = ["dip"]
+    MD_MECHANISMS = "MNAR"
 
     for model_impt in algorithms:
         init_time = perf_counter()

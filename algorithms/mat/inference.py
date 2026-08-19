@@ -51,6 +51,12 @@ class MATInpainter:
         arr = np.asarray(image, dtype=np.float32)
         if arr.ndim == 3 and arr.shape[-1] == 1:
             arr = arr[..., 0]
+        # x_md_batch carries NaN under the missing-pixel hole (ImageDataAmputation
+        # convention). MAT's own forward pass computes images_in * masks_in to zero
+        # the hole out, but NaN * 0 stays NaN in IEEE floats, so an unfilled NaN
+        # poisons the whole generator forward pass instead of being ignored. Fill it
+        # before any resize/rescale so it can't spread further via interpolation.
+        arr = np.nan_to_num(arr, nan=0.0)
         if arr.max() > 1.0 + 1e-6:
             arr = arr / 255.0
         orig_shape = arr.shape[:2]
