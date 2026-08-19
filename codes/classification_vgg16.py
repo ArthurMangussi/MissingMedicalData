@@ -37,7 +37,12 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
-from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.model_selection import (
+    GroupShuffleSplit,
+    StratifiedGroupKFold,
+    StratifiedKFold,
+    train_test_split,
+)
 from torch.utils.data import DataLoader
 from torchvision import models, transforms
 from torchvision.models import VGG16_Weights
@@ -195,15 +200,25 @@ def evaluate_vgg16(
 
 def load_baseline_data(dataset_name: str):
     """
-    Load raw uint8 [0, 255] images and integer labels for a dataset, in the
-    exact array order used by codes/experimental_design_*.py when generating
-    the imputed images -- so StratifiedKFold folds line up with saved results.
+    Load raw uint8 [0, 255] images, integer labels and (when available)
+    patient ids for a dataset, in the exact array order used by
+    codes/experimental_design_*.py when generating the imputed images --
+    so the folds recomputed here line up with the saved results.
+
+    patients is None for every dataset except breakhist, which signals
+    run_classification to use the same patient-grouped split
+    (StratifiedGroupKFold) as codes/experimental_design_breakhist.py instead
+    of a plain StratifiedKFold.
     """
     data = Datasets(dataset_name)
 
+    if dataset_name == "breakhist":
+        images, _, labels, patients = data.load_data()
+        return images, np.array(labels), np.array(patients)
+
     if dataset_name == "cbis-ddsm":
         images, _, labels = data.load_data()
-        return images, np.array(labels)
+        return images, np.array(labels), None
 
     images, y_dict, image_ids = data.load_data()
 
@@ -212,7 +227,7 @@ def load_baseline_data(dataset_name: str):
     else:
         labels = np.array(list(y_dict.values()))
 
-    return images, labels
+    return images, labels, None
 
 
 def load_imputed_fold_images(
@@ -227,25 +242,50 @@ def load_imputed_fold_images(
     Load the imputed test images saved by codes/experimental_design_*.py for
     a given fold, in the exact order they were written (IMG_0000.png, ...).
 
-    Returns None if this dataset/imputer/mechanism/fold combination was not
-    found on disk.
+    Also returns the ground-truth labels for those images when they can be
+    read from the classes.csv saved alongside the PNGs (currently only
+    utils.MyUtils.Utilities.save_image_breakhist writes one keyed by the
+    "IMG_XXXX" id -- save_image/save_image_cbis don't, so labels is None for
+    every other dataset and the caller falls back to the y_test it already
+    has from its own fold split). Reading the label from classes.csv instead
+    of trusting that a freshly recomputed split lines up positionally with
+    what was saved is what actually makes this robust to that split ever
+    drifting (sklearn/numpy version differences, etc.) -- IMG_XXXX.png's
+    array position alone doesn't guarantee that.
+
+    Returns (None, None) if this dataset/imputer/mechanism/fold combination
+    was not found on disk.
     """
     fold_dir = os.path.join(
         results_dir, dataset_name, model_impt, "imputed_images", f"fold{fold}_{mechanism}"
     )
     if not os.path.isdir(fold_dir):
-        return None
+        return None, None
+
+    classes_path = os.path.join(fold_dir, "classes.csv")
+    labels_by_image = None
+    if os.path.exists(classes_path):
+        classes_df = pd.read_csv(classes_path)
+        if "Image" in classes_df.columns and "Target" in classes_df.columns:
+            labels_by_image = dict(zip(classes_df["Image"], classes_df["Target"]))
 
     images = []
+    labels = []
     for i in range(n_images):
-        img_path = os.path.join(fold_dir, f"IMG_{i:04d}.png")
+        image_id = f"IMG_{i:04d}"
+        img_path = os.path.join(fold_dir, f"{image_id}.png")
         if not os.path.exists(img_path):
-            return None
+            return None, None
         img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
         img = cv2.resize(img, (224, 224))
         images.append(img)
 
-    return np.array(images)
+        if labels_by_image is not None:
+            if image_id not in labels_by_image:
+                return None, None
+            labels.append(int(labels_by_image[image_id]))
+
+    return np.array(images), (np.array(labels) if labels_by_image is not None else None)
 
 
 def run_classification(
@@ -260,28 +300,46 @@ def run_classification(
     _logger = MeLogger()
     os.makedirs(output_dir, exist_ok=True)
 
-    images, labels = load_baseline_data(dataset_name)
+    images, labels, patients = load_baseline_data(dataset_name)
 
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    # breakhist has multiple crops per patient, so codes/experimental_design_breakhist.py
+    # splits by patient (StratifiedGroupKFold) to avoid leaking a patient's crops
+    # across train/val/test -- reusing a plain StratifiedKFold here would desync
+    # the test-fold indices from the images already saved under new_results/breakhist/.
+    if patients is not None:
+        splitter = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42)
+        split_iter = splitter.split(images, labels, groups=patients)
+    else:
+        splitter = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+        split_iter = splitter.split(images, labels)
 
     baseline_rows = {}
     imputed_rows = {
         (mechanism, model_impt): {} for mechanism in mechanisms for model_impt in imputers
     }
 
-    for fold, (train_val_idx, test_idx) in enumerate(skf.split(images, labels)):
+    for fold, (train_val_idx, test_idx) in enumerate(split_iter):
         _logger.info(f"[VGG16 classification][{dataset_name}] Fold {fold + 1}/5")
 
         x_train_val, x_test = images[train_val_idx], images[test_idx]
         y_train_val, y_test = labels[train_val_idx], labels[test_idx]
 
-        x_train, x_val, y_train, y_val = train_test_split(
-            x_train_val,
-            y_train_val,
-            test_size=0.2,
-            random_state=fold,
-            stratify=y_train_val,
-        )
+        if patients is not None:
+            patients_train_val = patients[train_val_idx]
+            gss = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=fold)
+            train_idx, val_idx = next(
+                gss.split(x_train_val, y_train_val, groups=patients_train_val)
+            )
+            x_train, x_val = x_train_val[train_idx], x_train_val[val_idx]
+            y_train, y_val = y_train_val[train_idx], y_train_val[val_idx]
+        else:
+            x_train, x_val, y_train, y_val = train_test_split(
+                x_train_val,
+                y_train_val,
+                test_size=0.2,
+                random_state=fold,
+                stratify=y_train_val,
+            )
 
         model = build_vgg16(num_classes=2, freeze_backbone=freeze_backbone, device=device)
         model = train_vgg16(model, x_train, y_train, x_val, y_val, device=device)
@@ -290,7 +348,7 @@ def run_classification(
 
         for mechanism in mechanisms:
             for model_impt in imputers:
-                x_test_imputed = load_imputed_fold_images(
+                x_test_imputed, y_test_saved = load_imputed_fold_images(
                     dataset_name,
                     model_impt,
                     mechanism,
@@ -305,8 +363,25 @@ def run_classification(
                     )
                     continue
 
+                # Prefer the labels saved alongside the PNGs (classes.csv) over
+                # the freshly recomputed y_test -- they're the actual record of
+                # what each IMG_XXXX.png is. Falls back to y_test only for the
+                # older save_image/save_image_cbis outputs that don't have one.
+                if y_test_saved is not None:
+                    if not np.array_equal(y_test_saved, y_test):
+                        _logger.error(
+                            f"[VGG16 classification][{dataset_name}] "
+                            f"{model_impt}/{mechanism} fold{fold}: classes.csv labels "
+                            "don't match the recomputed fold split -- the saved images "
+                            "no longer correspond to this test fold, skipping"
+                        )
+                        continue
+                    y_test_eval = y_test_saved
+                else:
+                    y_test_eval = y_test
+
                 imputed_rows[(mechanism, model_impt)][f"fold{fold}"] = evaluate_vgg16(
-                    model, x_test_imputed, y_test, device=device
+                    model, x_test_imputed, y_test_eval, device=device
                 )
 
         del model
@@ -334,10 +409,11 @@ if __name__ == "__main__":
     dataset_mechanisms = {
         #"inbreast": ["MNAR-SQUARES", "MNAR-LINES"],
         #"mias": ["MNAR-SQUARES", "MNAR-LINES"],
-        "vindr-reduzido": ["MNAR-SQUARES", "MNAR-LINES"],
+        #"vindr-reduzido": ["MNAR-SQUARES", "MNAR-LINES"],
         #"cbis-ddsm": ["MCAR"],
+        "breakhist": ["MCAR", "MAR", "MNAR"],
     }
-    imputers = ["knn", "mc", "vaewl", "mae-vit", "dip", "diffusion", "mat", "harp"]
+    imputers = ["knn", "dip", "mat", "harp", "mae-vit"]
 
     for dataset_name, mechanisms in dataset_mechanisms.items():
         run_classification(
