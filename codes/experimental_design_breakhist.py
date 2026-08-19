@@ -28,7 +28,7 @@ from utils.MyDataset import Datasets
 from utils.MyModels import ModelsImputation
 from utils.MyUtils import Utilities
 
-BATCH_SIZE = 16  # Ajuste conforme a memória da sua GPU
+BATCH_SIZE = 1024  # Ajuste conforme a memória da sua GPU
 
 
 def run_experimental_design(
@@ -73,9 +73,25 @@ def run_experimental_design(
 
         amputation = ImageDataAmputation()
 
-        x_train, x_train_md, _ = amputation.generate_mnar_intensity(x_train,missing_rate=0.2)
-        x_val, x_val_md, _ = amputation.generate_mnar_intensity(x_val,missing_rate=0.2)
-        x_test, x_test_md, missing_mask_test = amputation.generate_mnar_intensity(x_test,missing_rate=0.2)
+        # Seed determinística por fold (independente de model_impt): garante que
+        # TODOS os imputadores avaliados num mesmo fold/mecanismo vejam exatamente
+        # a mesma máscara, em vez de cada chamada de run_experimental_design (uma
+        # por model_impt) sortear sua própria máscara aleatória independente --
+        # o que tornaria a comparação entre métodos injusta (cada um "veria" uma
+        # instância de missingness diferente por sorte, não por causa do método).
+        np.random.seed(1000 + fold)
+        x_train, x_train_md, _ = amputation.generate_mcar_dead_pixels(x_train,
+                                                                      p_single=0.0,
+                                                                      p_cluster=0.3,
+                                                                      cluster_size=40)
+        np.random.seed(2000 + fold)
+        x_val, x_val_md, _ = amputation.generate_mcar_dead_pixels(x_val,p_single=0.0,
+                                                                              p_cluster=0.3,
+                                                                              cluster_size=40)
+        np.random.seed(3000 + fold)
+        x_test, x_test_md, missing_mask_test = amputation.generate_mcar_dead_pixels(x_test, p_single=0.0,
+                                                                              p_cluster=0.3,
+                                                                              cluster_size=40)
 
         model = ModelsImputation()
         imputer = model.choose_model(
@@ -229,8 +245,8 @@ if __name__ == "__main__":
     labels = np.array(labels)
     patients = np.array(patients)
 
-    algorithms = ["dip"]
-    MD_MECHANISMS = "MNAR"
+    algorithms = ["mae-vit", "mat", "harp"]
+    MD_MECHANISMS = "MCAR"
 
     for model_impt in algorithms:
         init_time = perf_counter()
