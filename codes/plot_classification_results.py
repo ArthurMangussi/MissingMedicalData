@@ -33,10 +33,11 @@ import pandas as pd
 DATASET_MECHANISMS = {
     #"inbreast": ["MNAR-SQUARES", "MNAR-LINES"],
     #"mias": ["MNAR-SQUARES", "MNAR-LINES"],
-    "vindr-reduzido": ["MNAR-SQUARES", "MNAR-LINES"],
+    #"vindr-reduzido": ["MNAR-SQUARES", "MNAR-LINES"],
     #"cbis-ddsm": ["MCAR"],
+    "breakhist": ["MCAR", "MAR", "MNAR"],
 }
-IMPUTERS = ["knn", "mc", "vaewl", "mae-vit", "dip", "diffusion", "mat", "harp"]
+IMPUTERS = ["mc", "vaewl", "mae-vit", "dip", "diffusion", "mat", "harp"]
 METRICS = ["ACCURACY", "F1", "AUC"]
 
 # Fixed categorical order (slots 1, 2, 3, 4, 5, 6 of the validated default

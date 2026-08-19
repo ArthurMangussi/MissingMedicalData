@@ -1,25 +1,8 @@
 import pandas as pd
 
-datasets = ["inbreast","mias", "vindr-reduzido"]  # List of datasets to process
-MD_MECHANISM = ["MNAR-SQUARES", "MNAR-LINES"]
-imputers = ["knn", "mc",  "vaewl","mae-vit", "diffusion", "dip", "mat", "harp"]
-
-results = []
-for dataset in datasets:
-  for md in MD_MECHANISM:
-    for imputer in imputers:
-        df = pd.read_csv(f"/home/gpu-10-2025/Área de trabalho/MissingMedicalData/results/{imputer}/{dataset}_{imputer}_{md}_results.csv")
-        df["DATASET"] = dataset
-        df["ALGORITHS"] = imputer
-        df["MD_MECHANISM"] = md
-        results.append(df)
-
-df_results = pd.concat(results).rename(columns={"Unnamed: 0":"fold"})
-df_results.to_csv("results_mnar_mar.csv", index=False)
-
-
-# O nome do arquivo CSV carregado é 'results.csv'
-FILE_PATH = "results.csv"
+datasets = ["breakhist"]  # List of datasets to process
+MD_MECHANISMS = ["MCAR", "MAR", "MNAR"]  # processadas separadamente, uma tabela por mecanismo
+imputers = ["knn", "mae-vit", "dip", "mat", "harp"]
 
 def format_mean_std(series_mean, series_std, decimals=3):
     """
@@ -111,15 +94,82 @@ def create_pivot_table(file_path):
         return pd.DataFrame()
 
 # --- Execução Principal ---
-pivot_table_metrics_df = create_pivot_table(FILE_PATH)
+# Roda cada mecanismo (MCAR, MAR, MNAR) separadamente: um results_breakhist_{md}.csv
+# e uma tabela pivotada (CSV + LaTeX) próprios para cada um, em vez de misturar tudo
+# numa unica tabela.
+RESULTS_DIR = "/home/gpu-10-2025/Área de trabalho/MissingMedicalData/results"
 
-if not pivot_table_metrics_df.empty:
-    # 9. Salvar os resultados em um novo arquivo CSV.
-    # Salvamos o cabeçalho com o MultiIndex, que é interpretado por programas como Excel/Google Sheets.
-    output_file = 'pivot_table_summary.csv'
-    pivot_table_metrics_df.to_csv(output_file)
-    print(f"\nResultados salvos com sucesso em '{output_file}'.")
+pivot_tables_by_mechanism = {}
 
-    print("\nPrévia da Tabela Pivotada (as colunas estão aninhadas):")
-    # Usar to_string() para exibir o MultiIndex formatado no console
-    print(pivot_table_metrics_df.head().to_string())
+for md in MD_MECHANISMS:
+    results = []
+    for dataset in datasets:
+        for imputer in imputers:
+            df = pd.read_csv(
+                f"{RESULTS_DIR}/{imputer}/{dataset}_{imputer}_{md}_results.csv"
+            )
+            df["DATASET"] = dataset
+            df["ALGORITHS"] = imputer
+            df["MD_MECHANISM"] = md
+            results.append(df)
+
+    df_results = pd.concat(results).rename(columns={"Unnamed: 0": "fold"})
+    results_csv = f"{RESULTS_DIR}/results_breakhist_{md}.csv"
+    df_results.to_csv(results_csv, index=False)
+
+    pivot_table_metrics_df = create_pivot_table(results_csv)
+
+    if not pivot_table_metrics_df.empty:
+        # Salva o CSV (cabeçalho com o MultiIndex, interpretado por Excel/Google Sheets)
+        # e a versão LaTeX da mesma tabela pivotada.
+        csv_out = f"{RESULTS_DIR}/pivot_table_summary_breakhist_{md}.csv"
+        tex_out = f"{RESULTS_DIR}/pivot_table_summary_breakhist_{md}.tex"
+
+        pivot_table_metrics_df.to_csv(csv_out)
+        pivot_table_metrics_df.to_latex(
+            tex_out,
+            multicolumn=True,
+            multicolumn_format="c",
+            caption=f"Qualidade de imputação (MAE, PSNR, SSIM) no BreaKHis -- mecanismo {md}.",
+            label=f"tab:breakhist_{md.lower()}",
+        )
+
+        print(f"\n=== {md} ===")
+        print(f"Resultados salvos em '{csv_out}' e '{tex_out}'.")
+        print("\nPrévia da Tabela Pivotada (as colunas estão aninhadas):")
+        print(pivot_table_metrics_df.to_string())
+
+        # DATASET so tem o valor "breakhist" aqui -- descartamos esse nivel
+        # antes de juntar os 3 mecanismos numa unica tabela abaixo.
+        pivot_tables_by_mechanism[md] = pivot_table_metrics_df.droplevel(
+            "DATASET", axis=1
+        )
+
+# --- Tabela unica com os 3 mecanismos lado a lado ---
+if len(pivot_tables_by_mechanism) == len(MD_MECHANISMS):
+    combined_table = pd.concat(
+        [pivot_tables_by_mechanism[md] for md in MD_MECHANISMS],
+        axis=1,
+        keys=MD_MECHANISMS,
+    )
+    combined_table.columns.names = ["Mechanism", "Metric"]
+
+    combined_csv = f"{RESULTS_DIR}/pivot_table_summary_breakhist_all_mechanisms.csv"
+    combined_tex = f"{RESULTS_DIR}/pivot_table_summary_breakhist_all_mechanisms.tex"
+
+    combined_table.to_csv(combined_csv)
+    combined_table.to_latex(
+        combined_tex,
+        multicolumn=True,
+        multicolumn_format="c",
+        caption=(
+            "Imputation quality (MAE, PSNR, SSIM; mean $\\pm$ std over 5 folds) "
+            "on BreaKHis, across missingness mechanisms (MCAR, MAR, MNAR)."
+        ),
+        label="tab:breakhist_all_mechanisms",
+    )
+
+    print("\n=== Combined (MCAR + MAR + MNAR) ===")
+    print(f"Resultados salvos em '{combined_csv}' e '{combined_tex}'.")
+    print("\nPrévia da Tabela Combinada:")
+    print(combined_table.to_string())
