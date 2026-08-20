@@ -73,6 +73,16 @@ METRIC_LABELS = {
     "AUC": "AUC",
 }
 
+# Mechanism order/colors for the data-centric alignment plot (mechanism is the
+# grouped-bar dimension there, method is the x-axis -- independent from
+# METHOD_COLORS above, which colors methods in the other charts).
+MECHANISM_ORDER = ["MCAR", "MAR", "MNAR"]
+MECHANISM_COLORS = {
+    "MCAR": "#2a78d6",
+    "MAR": "#eb6834",
+    "MNAR": "#4a3aa7",
+}
+
 INK_PRIMARY = "#0b0b0b"
 INK_SECONDARY = "#52514e"
 INK_MUTED = "#898781"
@@ -214,6 +224,119 @@ def plot_dataset_mechanism(
         print(f"Skipping {dataset}/{mechanism}: no imputer results found yet (baseline only).")
 
 
+def plot_data_centric_alignment(df_long: pd.DataFrame, dataset: str, output_dir: str):
+    """
+    Data-Centric AI alignment figure: one grouped-bar panel per metric, x =
+    imputation method, bars = one per mechanism (MCAR/MAR/MNAR). The clean
+    baseline isn't drawn as another bar (it doesn't depend on mechanism, so it
+    would just repeat) -- instead it's a horizontal dashed reference line with
+    a shaded +-std band. Bars sitting close to that line are the visual
+    argument: imputed images preserve almost the same downstream
+    classification performance as the untouched ground truth, across every
+    missingness mechanism.
+    """
+    subset = df_long[df_long["DATASET"] == dataset]
+    if subset.empty:
+        return
+
+    baseline = subset[subset["METHOD"] == "baseline"]
+    imputed = subset[subset["METHOD"] != "baseline"]
+    if imputed.empty:
+        return
+
+    mechanisms = [m for m in MECHANISM_ORDER if m in imputed["MECHANISM"].unique()]
+    methods = [m for m in IMPUTERS if m in imputed["METHOD"].unique()]
+    if not mechanisms or not methods:
+        return
+    n_mechanisms = len(mechanisms)
+
+    fig, axes = plt.subplots(
+        1, len(METRICS), figsize=(6 * len(METRICS), 5.5), facecolor=SURFACE
+    )
+    axes = np.atleast_1d(axes)
+
+    x = np.arange(len(methods))
+    bar_width = 0.8 / n_mechanisms
+
+    for ax, metric in zip(axes, METRICS):
+        ax.set_facecolor(SURFACE)
+
+        baseline_vals = baseline[baseline["METRIC"] == metric]["VALUE"]
+        baseline_mean = baseline_vals.mean()
+        baseline_std = baseline_vals.std()
+
+        for i, mechanism in enumerate(mechanisms):
+            means, stds = [], []
+            for method in methods:
+                vals = imputed[
+                    (imputed["METHOD"] == method)
+                    & (imputed["MECHANISM"] == mechanism)
+                    & (imputed["METRIC"] == metric)
+                ]["VALUE"]
+                means.append(vals.mean() if len(vals) else np.nan)
+                stds.append(vals.std() if len(vals) else 0.0)
+
+            offset = (i - (n_mechanisms - 1) / 2) * bar_width
+            ax.bar(
+                x + offset,
+                means,
+                width=bar_width * 0.9,
+                yerr=stds,
+                capsize=2,
+                color=MECHANISM_COLORS[mechanism],
+                label=mechanism,
+                zorder=3,
+            )
+
+        if pd.notna(baseline_mean):
+            ax.axhspan(
+                baseline_mean - baseline_std,
+                baseline_mean + baseline_std,
+                color=INK_MUTED,
+                alpha=0.15,
+                zorder=1,
+            )
+            ax.axhline(
+                baseline_mean,
+                color=INK_PRIMARY,
+                linestyle="--",
+                linewidth=1.5,
+                zorder=2,
+                label="Baseline (clean)",
+            )
+
+        ax.set_ylim(0, 1.05)
+        ax.set_xticks(x)
+        ax.set_xticklabels(
+            [METHOD_LABELS[m] for m in methods], color=INK_SECONDARY, rotation=15, ha="right"
+        )
+        ax.tick_params(axis="y", colors=INK_SECONDARY)
+        ax.set_ylabel(METRIC_LABELS[metric], color=INK_SECONDARY)
+
+        ax.yaxis.grid(True, color=GRIDLINE, linewidth=1, zorder=0)
+        ax.set_axisbelow(True)
+        for spine_name in ["top", "right", "left"]:
+            ax.spines[spine_name].set_visible(False)
+        ax.spines["bottom"].set_color(BASELINE_AXIS)
+
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.02),
+        ncol=n_mechanisms + 1,
+        frameon=False,
+        labelcolor=INK_SECONDARY,
+    )
+
+    os.makedirs(output_dir, exist_ok=True)
+    out_path = os.path.join(output_dir, f"{dataset}_data_centric_alignment.png")
+    fig.savefig(out_path, dpi=300, bbox_inches="tight", facecolor=SURFACE)
+    plt.close(fig)
+    print(f"Saved {out_path}")
+
+
 def plot_overall(df_long: pd.DataFrame, output_dir: str):
     """Single grouped bar chart pooled across every available dataset and mechanism."""
     if df_long.empty:
@@ -251,6 +374,8 @@ def main(
     for dataset, mechanisms in DATASET_MECHANISMS.items():
         for mechanism in mechanisms:
             plot_dataset_mechanism(df_long, dataset, mechanism, output_dir)
+        if len(mechanisms) > 1:
+            plot_data_centric_alignment(df_long, dataset, output_dir)
 
     plot_overall(df_long, output_dir)
 
